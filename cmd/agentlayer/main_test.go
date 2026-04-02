@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/agentlayer/agentlayer/internal/core"
 )
 
 func TestNewServerExposesHealthEndpoint(t *testing.T) {
@@ -145,6 +148,15 @@ func TestSMTPAddressHelpers(t *testing.T) {
 
 	if got := smtpDomain(); got != "smtp.example.com" {
 		t.Fatalf("expected smtp domain helper to read env, got %q", got)
+	}
+}
+
+func TestNewInboundServiceUsesComposedPlaceholderDependencies(t *testing.T) {
+	service := newInboundService()
+
+	_, err := service.HandleStoredMessage(context.Background(), core.StoredInboundMessage{})
+	if err == nil {
+		t.Fatal("expected placeholder inbound service to return an error")
 	}
 }
 

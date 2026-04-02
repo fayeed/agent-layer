@@ -83,7 +83,7 @@ func newSMTPServer() *smtp.Server {
 			session := smtpedge.NewSession(
 				notImplementedInboxLookup{},
 				notImplementedRawMessageStore{},
-				smtpedge.NewReceiptSink(notImplementedStoredMessageHandler{}),
+				smtpedge.NewReceiptSink(newInboundService()),
 				time.Now,
 				func() string { return "raw/generated.eml" },
 				"smtp-session-placeholder",
@@ -102,6 +102,13 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 		Addr:    addr,
 		Handler: handler,
 	}
+}
+
+func newInboundService() inbound.Service {
+	return inbound.NewService(
+		notImplementedInboundProcessor{},
+		notImplementedInboundRecorder{},
+	)
 }
 
 func runServers(httpServer serveServer, smtpServer serveServer) error {
@@ -178,8 +185,14 @@ func (notImplementedRawMessageStore) Put(context.Context, string, []byte) error 
 	return errors.New("smtp raw message store not implemented")
 }
 
-type notImplementedStoredMessageHandler struct{}
+type notImplementedInboundProcessor struct{}
 
-func (notImplementedStoredMessageHandler) HandleStoredMessage(context.Context, core.StoredInboundMessage) (inbound.HandleResult, error) {
-	return inbound.HandleResult{}, errors.New("stored inbound handler not implemented")
+func (notImplementedInboundProcessor) Process(context.Context, core.StoredInboundMessage) (inbound.ProcessResult, error) {
+	return inbound.ProcessResult{}, errors.New("inbound processor not implemented")
+}
+
+type notImplementedInboundRecorder struct{}
+
+func (notImplementedInboundRecorder) Record(context.Context, core.StoredInboundMessage, inbound.ProcessResult) (inbound.RecordResult, error) {
+	return inbound.RecordResult{}, errors.New("inbound recorder not implemented")
 }
