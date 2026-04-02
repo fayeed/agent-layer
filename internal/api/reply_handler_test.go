@@ -1,0 +1,97 @@
+package api
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/agentlayer/agentlayer/internal/domain"
+	"github.com/agentlayer/agentlayer/internal/outbound"
+)
+
+func TestReplyHandlerPostsThreadReply(t *testing.T) {
+	service := &replyServiceStub{
+		result: outbound.SendReplyResult{
+			Thread: domain.Thread{
+				ID: "thread-123",
+			},
+			Message: domain.Message{
+				ID:                "message-123",
+				ThreadID:          "thread-123",
+				Subject:           "Re: Hello World",
+				MessageIDHeader:   "<reply-123@agentlayer.local>",
+				DeliveryState:     outbound.DeliveryStateSent,
+				ProviderMessageID: "ses-123",
+			},
+		},
+	}
+
+	handler := NewReplyHandler(service)
+
+	body := bytes.NewBufferString(`{
+		"organization_id":"org-123",
+		"agent_id":"agent-123",
+		"inbox_id":"inbox-123",
+		"contact_id":"contact-123",
+		"reply_to_message_id":"message-100",
+		"body_text":"Thanks for reaching out.",
+		"object_key":"outbound/reply-123.eml"
+	}`)
+
+	request := httptest.NewRequest(http.MethodPost, "/threads/thread-123/reply", body)
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("expected accepted status, got %d", recorder.Code)
+	}
+
+	if service.input.Thread.ID != "thread-123" {
+		t.Fatalf("expected thread id from url, got %#v", service.input)
+	}
+
+	if service.input.BodyText != "Thanks for reaching out." {
+		t.Fatalf("expected body text from request, got %#v", service.input)
+	}
+
+	var response replyResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("expected valid json response, got error: %v", err)
+	}
+
+	if response.MessageID != "message-123" {
+		t.Fatalf("expected response message id, got %#v", response)
+	}
+
+	if response.ProviderMessageID != "ses-123" {
+		t.Fatalf("expected provider message id in response, got %#v", response)
+	}
+}
+
+func TestReplyHandlerRejectsInvalidPayload(t *testing.T) {
+	handler := NewReplyHandler(&replyServiceStub{})
+
+	request := httptest.NewRequest(http.MethodPost, "/threads/thread-123/reply", bytes.NewBufferString(`{`))
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected bad request status, got %d", recorder.Code)
+	}
+}
+
+type replyServiceStub struct {
+	input  outbound.SendReplyInput
+	result outbound.SendReplyResult
+	err    error
+}
+
+func (s *replyServiceStub) SendReply(_ context.Context, input outbound.SendReplyInput) (outbound.SendReplyResult, error) {
+	s.input = input
+	return s.result, s.err
+}
