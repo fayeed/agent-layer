@@ -40,13 +40,13 @@ type serveServer interface {
 func newServer() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealth)
-	mux.Handle("POST /threads/{threadID}/reply", api.NewReplyHandler(notImplementedReplyService{}))
+	mux.Handle("POST /threads/{threadID}/reply", api.NewReplyHandler(newReplyService()))
 	mux.Handle("POST /threads/{threadID}/escalate", api.NewThreadEscalateHandler(notImplementedThreadEscalationService{}))
 	mux.Handle("GET /threads/{threadID}", api.NewThreadHandler(notImplementedThreadService{}))
 	mux.Handle("GET /threads/{threadID}/messages", api.NewThreadMessagesHandler(notImplementedThreadMessagesService{}))
 	mux.Handle("GET /contacts/{contactID}", api.NewContactHandler(notImplementedContactService{}))
 	mux.Handle("POST /contacts/{contactID}/memory", api.NewContactMemoryHandler(notImplementedContactMemoryService{}))
-	mux.Handle("POST /provider/callbacks/outbound", api.NewOutboundCallbackHandler(notImplementedOutboundCallbackParser{}, notImplementedOutboundCallbackFlow{}))
+	mux.Handle("POST /provider/callbacks/outbound", api.NewOutboundCallbackHandler(outbound.NewCallbackParser(), newOutboundCallbackFlow()))
 	return mux
 }
 
@@ -110,7 +110,7 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 func newInboundService() inbound.Service {
 	return inbound.NewService(
 		newInboundProcessor(),
-		notImplementedInboundRecorder{},
+		newInboundRecorder(),
 	)
 }
 
@@ -119,6 +119,34 @@ func newInboundProcessor() inbound.Processor {
 		parser.New(notImplementedRawMessageReader{}),
 		contacts.NewResolver(notImplementedContactLookup{}),
 		threading.NewResolver(notImplementedThreadLookup{}),
+	)
+}
+
+func newInboundRecorder() inbound.Recorder {
+	return inbound.NewRecorder(
+		notImplementedInboundContactRepository{},
+		notImplementedInboundThreadRepository{},
+		notImplementedInboundMessageRepository{},
+	)
+}
+
+func newReplyService() outbound.Service {
+	return outbound.NewService(
+		outbound.NewAssembler(func() string { return "<generated@agentlayer.local>" }),
+		outbound.NewRecorderWithThreads(notImplementedOutboundCreateMessageRepository{}, notImplementedOutboundThreadRepository{}),
+		outbound.NewSender(notImplementedEmailProvider{}),
+		outbound.NewStatusRecorder(notImplementedOutboundSaveMessageRepository{}),
+		time.Now,
+	)
+}
+
+func newOutboundCallbackFlow() outbound.CallbackFlow {
+	return outbound.NewCallbackFlow(
+		outbound.NewCallbackService(
+			notImplementedProviderMessageLookup{},
+			outbound.NewDeliveryRecorder(notImplementedOutboundSaveMessageRepository{}),
+		),
+		outbound.NewSuppressionService(notImplementedSuppressionRepository{}),
 	)
 }
 
@@ -148,12 +176,6 @@ func (notImplementedContactService) GetContact(context.Context, string) (domain.
 	return domain.Contact{}, errors.New("contact service not implemented")
 }
 
-type notImplementedReplyService struct{}
-
-func (notImplementedReplyService) SendReply(context.Context, outbound.SendReplyInput) (outbound.SendReplyResult, error) {
-	return outbound.SendReplyResult{}, errors.New("reply service not implemented")
-}
-
 type notImplementedThreadEscalationService struct{}
 
 func (notImplementedThreadEscalationService) EscalateThread(context.Context, string, string) (domain.Thread, error) {
@@ -172,18 +194,6 @@ func (notImplementedContactMemoryService) CreateContactMemory(context.Context, s
 	return domain.ContactMemoryEntry{}, errors.New("contact memory service not implemented")
 }
 
-type notImplementedOutboundCallbackParser struct{}
-
-func (notImplementedOutboundCallbackParser) Parse([]byte) (outbound.DeliveryCallbackEvent, error) {
-	return outbound.DeliveryCallbackEvent{}, errors.New("outbound callback parser not implemented")
-}
-
-type notImplementedOutboundCallbackFlow struct{}
-
-func (notImplementedOutboundCallbackFlow) Apply(context.Context, outbound.CallbackFlowInput) (outbound.CallbackFlowResult, error) {
-	return outbound.CallbackFlowResult{}, errors.New("outbound callback flow not implemented")
-}
-
 type notImplementedInboxLookup struct{}
 
 func (notImplementedInboxLookup) FindByEmailAddress(context.Context, string) (domain.Inbox, bool, error) {
@@ -194,12 +204,6 @@ type notImplementedRawMessageStore struct{}
 
 func (notImplementedRawMessageStore) Put(context.Context, string, []byte) error {
 	return errors.New("smtp raw message store not implemented")
-}
-
-type notImplementedInboundRecorder struct{}
-
-func (notImplementedInboundRecorder) Record(context.Context, core.StoredInboundMessage, inbound.ProcessResult) (inbound.RecordResult, error) {
-	return inbound.RecordResult{}, errors.New("inbound recorder not implemented")
 }
 
 type notImplementedRawMessageReader struct{}
@@ -218,4 +222,66 @@ type notImplementedThreadLookup struct{}
 
 func (notImplementedThreadLookup) FindByMessageID(context.Context, string) (domain.Thread, bool, error) {
 	return domain.Thread{}, false, errors.New("thread lookup not implemented")
+}
+
+type notImplementedInboundContactRepository struct{}
+
+func (notImplementedInboundContactRepository) UpsertByEmail(context.Context, domain.Contact) (domain.Contact, error) {
+	return domain.Contact{}, errors.New("inbound contact repository not implemented")
+}
+
+type notImplementedInboundThreadRepository struct{}
+
+func (notImplementedInboundThreadRepository) Save(context.Context, domain.Thread) (domain.Thread, error) {
+	return domain.Thread{}, errors.New("inbound thread repository not implemented")
+}
+
+type notImplementedInboundMessageRepository struct{}
+
+func (notImplementedInboundMessageRepository) Create(context.Context, domain.Message) (domain.Message, error) {
+	return domain.Message{}, errors.New("inbound message repository not implemented")
+}
+
+type notImplementedOutboundThreadRepository struct{}
+
+func (notImplementedOutboundThreadRepository) Save(context.Context, domain.Thread) (domain.Thread, error) {
+	return domain.Thread{}, errors.New("outbound thread repository not implemented")
+}
+
+type notImplementedOutboundCreateMessageRepository struct{}
+
+func (notImplementedOutboundCreateMessageRepository) Create(context.Context, domain.Message) (domain.Message, error) {
+	return domain.Message{}, errors.New("outbound create message repository not implemented")
+}
+
+type notImplementedOutboundSaveMessageRepository struct{}
+
+func (notImplementedOutboundSaveMessageRepository) Save(context.Context, domain.Message) (domain.Message, error) {
+	return domain.Message{}, errors.New("outbound save message repository not implemented")
+}
+
+type notImplementedEmailProvider struct{}
+
+func (notImplementedEmailProvider) Send(context.Context, core.OutboundSendRequest) (core.SendResult, error) {
+	return core.SendResult{}, errors.New("email provider not implemented")
+}
+
+func (notImplementedEmailProvider) GetDeliveryStatus(context.Context, string) (core.DeliveryStatus, error) {
+	return core.DeliveryStatus{}, errors.New("email provider not implemented")
+}
+
+func (notImplementedEmailProvider) HealthCheck(context.Context) (core.ProviderHealth, error) {
+	return core.ProviderHealth{}, errors.New("email provider not implemented")
+}
+
+type notImplementedProviderMessageLookup struct{}
+
+func (notImplementedProviderMessageLookup) FindByProviderMessageID(context.Context, string) (domain.Message, bool, error) {
+	return domain.Message{}, false, errors.New("provider message lookup not implemented")
+}
+
+type notImplementedSuppressionRepository struct{}
+
+func (notImplementedSuppressionRepository) Save(context.Context, domain.SuppressedAddress) (domain.SuppressedAddress, error) {
+	return domain.SuppressedAddress{}, errors.New("suppression repository not implemented")
 }

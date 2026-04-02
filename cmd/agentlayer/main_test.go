@@ -10,6 +10,9 @@ import (
 	"time"
 
 	"github.com/agentlayer/agentlayer/internal/core"
+	"github.com/agentlayer/agentlayer/internal/domain"
+	"github.com/agentlayer/agentlayer/internal/inbound"
+	"github.com/agentlayer/agentlayer/internal/outbound"
 )
 
 func TestNewServerExposesHealthEndpoint(t *testing.T) {
@@ -174,6 +177,73 @@ func TestNewInboundProcessorUsesRealProcessorChain(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected placeholder raw message reader to fail")
+	}
+}
+
+func TestNewInboundRecorderUsesRealRecorderChain(t *testing.T) {
+	recorder := newInboundRecorder()
+
+	_, err := recorder.Record(context.Background(), core.StoredInboundMessage{
+		Receipt: core.InboundReceipt{
+			OrganizationID: "org-123",
+			InboxID:        "inbox-123",
+			ReceivedAt:     time.Date(2026, 4, 3, 17, 5, 0, 0, time.UTC),
+		},
+	}, inbound.ProcessResult{
+		Contact: domain.Contact{ID: "contact-123"},
+		Thread:  domain.Thread{ID: "thread-123"},
+	})
+	if err == nil {
+		t.Fatal("expected placeholder inbound repositories to fail")
+	}
+}
+
+func TestNewReplyServiceUsesRealOutboundComposition(t *testing.T) {
+	service := newReplyService()
+
+	_, err := service.SendReply(context.Background(), outbound.SendReplyInput{
+		Organization: domain.Organization{ID: "org-123"},
+		Agent:        domain.Agent{ID: "agent-123"},
+		Inbox: domain.Inbox{
+			ID:           "inbox-123",
+			EmailAddress: "agent@example.com",
+		},
+		Thread: domain.Thread{
+			ID: "thread-123",
+		},
+		ReplyToMessage: domain.Message{
+			ID:              "message-100",
+			ThreadID:        "thread-123",
+			MessageIDHeader: "<message-100@example.com>",
+			Subject:         "Hello World",
+		},
+		Contact: domain.Contact{
+			ID:           "contact-123",
+			EmailAddress: "sender@example.com",
+		},
+		BodyText:  "Thanks for reaching out.",
+		ObjectKey: "outbound/reply-123.eml",
+	})
+	if err == nil {
+		t.Fatal("expected placeholder outbound repositories/provider to fail")
+	}
+}
+
+func TestNewOutboundCallbackFlowUsesRealCallbackComposition(t *testing.T) {
+	flow := newOutboundCallbackFlow()
+
+	_, err := flow.Apply(context.Background(), outbound.CallbackFlowInput{
+		Event: outbound.DeliveryCallbackEvent{
+			ProviderMessageID: "ses-123",
+			Status:            outbound.DeliveryStateDelivered,
+			OccurredAt:        time.Date(2026, 4, 3, 17, 10, 0, 0, time.UTC),
+		},
+		Contact: domain.Contact{
+			EmailAddress: "sender@example.com",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected placeholder callback dependencies to fail")
 	}
 }
 
