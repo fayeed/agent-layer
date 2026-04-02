@@ -19,13 +19,18 @@ import (
 func main() {
 	httpAddr := serverAddress()
 	smtpServer := newSMTPServer()
+	httpServer := newHTTPServer(httpAddr, newServer())
 
 	log.Printf("agentlayer http listening on %s", httpAddr)
 	log.Printf("agentlayer smtp configured on %s", smtpServer.Addr)
 
-	if err := http.ListenAndServe(httpAddr, newServer()); err != nil {
+	if err := runServers(httpServer, smtpServer); err != nil {
 		log.Fatal(err)
 	}
+}
+
+type serveServer interface {
+	ListenAndServe() error
 }
 
 func newServer() http.Handler {
@@ -89,6 +94,27 @@ func newSMTPServer() *smtp.Server {
 			Domain: smtpDomain(),
 		},
 	)
+}
+
+func newHTTPServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:    addr,
+		Handler: handler,
+	}
+}
+
+func runServers(httpServer serveServer, smtpServer serveServer) error {
+	errCh := make(chan error, 2)
+
+	go func() {
+		errCh <- httpServer.ListenAndServe()
+	}()
+
+	go func() {
+		errCh <- smtpServer.ListenAndServe()
+	}()
+
+	return <-errCh
 }
 
 type notImplementedThreadService struct{}

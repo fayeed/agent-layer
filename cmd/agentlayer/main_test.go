@@ -1,10 +1,12 @@
 package main
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNewServerExposesHealthEndpoint(t *testing.T) {
@@ -144,4 +146,58 @@ func TestSMTPAddressHelpers(t *testing.T) {
 	if got := smtpDomain(); got != "smtp.example.com" {
 		t.Fatalf("expected smtp domain helper to read env, got %q", got)
 	}
+}
+
+func TestRunServersStartsHTTPAndSMTP(t *testing.T) {
+	httpServer := &serveStub{err: errors.New("http stopped"), started: make(chan struct{})}
+	smtpServer := &serveStub{err: errors.New("smtp stopped"), started: make(chan struct{})}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- runServers(httpServer, smtpServer)
+	}()
+
+	<-httpServer.started
+	<-smtpServer.started
+	err := <-done
+	if err == nil {
+		t.Fatal("expected runServers to return an error")
+	}
+
+	if httpServer.calls != 1 {
+		t.Fatalf("expected http server to start once, got %d", httpServer.calls)
+	}
+
+	if smtpServer.calls != 1 {
+		t.Fatalf("expected smtp server to start once, got %d", smtpServer.calls)
+	}
+}
+
+func TestRunServersReturnsFirstServerError(t *testing.T) {
+	want := errors.New("smtp failed first")
+	httpServer := &serveStub{err: errors.New("http failed second"), delay: 20 * time.Millisecond}
+	smtpServer := &serveStub{err: want, delay: 1 * time.Millisecond}
+
+	err := runServers(httpServer, smtpServer)
+	if !errors.Is(err, want) {
+		t.Fatalf("expected first error %v, got %v", want, err)
+	}
+}
+
+type serveStub struct {
+	calls   int
+	err     error
+	delay   time.Duration
+	started chan struct{}
+}
+
+func (s *serveStub) ListenAndServe() error {
+	s.calls++
+	if s.started != nil {
+		close(s.started)
+	}
+	if s.delay > 0 {
+		time.Sleep(s.delay)
+	}
+	return s.err
 }
