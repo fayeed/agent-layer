@@ -9,11 +9,14 @@ import (
 	"time"
 
 	"github.com/agentlayer/agentlayer/internal/api"
+	"github.com/agentlayer/agentlayer/internal/contacts"
 	"github.com/agentlayer/agentlayer/internal/core"
 	"github.com/agentlayer/agentlayer/internal/domain"
 	"github.com/agentlayer/agentlayer/internal/inbound"
 	"github.com/agentlayer/agentlayer/internal/outbound"
+	"github.com/agentlayer/agentlayer/internal/parser"
 	"github.com/agentlayer/agentlayer/internal/smtpedge"
+	"github.com/agentlayer/agentlayer/internal/threading"
 	smtp "github.com/emersion/go-smtp"
 )
 
@@ -106,8 +109,16 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 
 func newInboundService() inbound.Service {
 	return inbound.NewService(
-		notImplementedInboundProcessor{},
+		newInboundProcessor(),
 		notImplementedInboundRecorder{},
+	)
+}
+
+func newInboundProcessor() inbound.Processor {
+	return inbound.NewProcessor(
+		parser.New(notImplementedRawMessageReader{}),
+		contacts.NewResolver(notImplementedContactLookup{}),
+		threading.NewResolver(notImplementedThreadLookup{}),
 	)
 }
 
@@ -185,14 +196,26 @@ func (notImplementedRawMessageStore) Put(context.Context, string, []byte) error 
 	return errors.New("smtp raw message store not implemented")
 }
 
-type notImplementedInboundProcessor struct{}
-
-func (notImplementedInboundProcessor) Process(context.Context, core.StoredInboundMessage) (inbound.ProcessResult, error) {
-	return inbound.ProcessResult{}, errors.New("inbound processor not implemented")
-}
-
 type notImplementedInboundRecorder struct{}
 
 func (notImplementedInboundRecorder) Record(context.Context, core.StoredInboundMessage, inbound.ProcessResult) (inbound.RecordResult, error) {
 	return inbound.RecordResult{}, errors.New("inbound recorder not implemented")
+}
+
+type notImplementedRawMessageReader struct{}
+
+func (notImplementedRawMessageReader) Get(context.Context, string) ([]byte, error) {
+	return nil, errors.New("raw message reader not implemented")
+}
+
+type notImplementedContactLookup struct{}
+
+func (notImplementedContactLookup) FindByEmail(context.Context, string, string) (domain.Contact, bool, error) {
+	return domain.Contact{}, false, errors.New("contact lookup not implemented")
+}
+
+type notImplementedThreadLookup struct{}
+
+func (notImplementedThreadLookup) FindByMessageID(context.Context, string) (domain.Thread, bool, error) {
+	return domain.Thread{}, false, errors.New("thread lookup not implemented")
 }

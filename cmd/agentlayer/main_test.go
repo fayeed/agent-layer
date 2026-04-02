@@ -160,6 +160,23 @@ func TestNewInboundServiceUsesComposedPlaceholderDependencies(t *testing.T) {
 	}
 }
 
+func TestNewInboundProcessorUsesRealProcessorChain(t *testing.T) {
+	processor := newInboundProcessor()
+
+	_, err := processor.Process(context.Background(), core.StoredInboundMessage{
+		Receipt: core.InboundReceipt{
+			OrganizationID:      "org-123",
+			AgentID:             "agent-123",
+			InboxID:             "inbox-123",
+			RawMessageObjectKey: "raw/test-message.eml",
+			ReceivedAt:          time.Date(2026, 4, 3, 17, 0, 0, 0, time.UTC),
+		},
+	})
+	if err == nil {
+		t.Fatal("expected placeholder raw message reader to fail")
+	}
+}
+
 func TestRunServersStartsHTTPAndSMTP(t *testing.T) {
 	httpServer := &serveStub{err: errors.New("http stopped"), started: make(chan struct{})}
 	smtpServer := &serveStub{err: errors.New("smtp stopped"), started: make(chan struct{})}
