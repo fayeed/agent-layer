@@ -62,6 +62,18 @@ func TestNewServerWiresThreadHandler(t *testing.T) {
 	}
 }
 
+func TestNewServerWiresContactHandler(t *testing.T) {
+	server := newServer()
+	request := httptest.NewRequest(http.MethodGet, "/contacts/contact-123", nil)
+	recorder := httptest.NewRecorder()
+
+	server.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected real contact handler path to return 500 from placeholder service, got %d", recorder.Code)
+	}
+}
+
 func TestNewServerLeavesUnwiredRoutesAsNotImplemented(t *testing.T) {
 	server := newServer()
 	request := httptest.NewRequest(http.MethodPost, "/threads/thread-123/reply", nil)

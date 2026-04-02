@@ -27,7 +27,7 @@ func newServer() http.Handler {
 	mux.HandleFunc("POST /threads/{threadID}/escalate", handleNotImplemented)
 	mux.Handle("GET /threads/{threadID}", api.NewThreadHandler(notImplementedThreadService{}))
 	mux.HandleFunc("GET /threads/{threadID}/messages", handleNotImplemented)
-	mux.HandleFunc("GET /contacts/{contactID}", handleNotImplemented)
+	mux.Handle("GET /contacts/{contactID}", api.NewContactHandler(notImplementedContactService{}))
 	mux.HandleFunc("POST /contacts/{contactID}/memory", handleNotImplemented)
 	mux.HandleFunc("POST /provider/callbacks/outbound", handleNotImplemented)
 	return mux
@@ -53,4 +53,10 @@ type notImplementedThreadService struct{}
 
 func (notImplementedThreadService) GetThread(context.Context, string) (domain.Thread, error) {
 	return domain.Thread{}, errors.New("thread service not implemented")
+}
+
+type notImplementedContactService struct{}
+
+func (notImplementedContactService) GetContact(context.Context, string) (domain.Contact, error) {
+	return domain.Contact{}, errors.New("contact service not implemented")
 }
