@@ -153,6 +153,8 @@ type WebhookDelivery struct {
 	EventID        string
 	Status         string
 	AttemptCount   int
+	ResponseCode   int
+	ResponseBody   []byte
 	LastAttemptAt  time.Time
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
