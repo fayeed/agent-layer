@@ -150,6 +150,16 @@ type ProviderConfig struct {
 	UpdatedAt      time.Time
 }
 
+type SuppressedAddress struct {
+	ID             string
+	OrganizationID string
+	EmailAddress   string
+	Reason         string
+	Source         string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
 type WebhookDelivery struct {
 	ID             string
 	OrganizationID string
