@@ -94,6 +94,15 @@ type Contact struct {
 	UpdatedAt      time.Time
 }
 
+type ContactMemoryEntry struct {
+	ID        string
+	ContactID string
+	ThreadID  string
+	Note      string
+	Tags      []string
+	CreatedAt time.Time
+}
+
 type Thread struct {
 	ID                string
 	OrganizationID    string
