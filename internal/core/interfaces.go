@@ -9,6 +9,9 @@ import (
 
 type InboundReceipt struct {
 	SMTPTransactionID   string
+	OrganizationID      string
+	AgentID             string
+	InboxID             string
 	EnvelopeSender      string
 	EnvelopeRecipients  []string
 	RawMessageObjectKey string
