@@ -198,6 +198,24 @@ func TestNewInboundRecorderUsesRealRecorderChain(t *testing.T) {
 	}
 }
 
+func TestNewThreadReadServiceUsesApplicationService(t *testing.T) {
+	service := newThreadReadService()
+
+	_, err := service.GetThread(context.Background(), "thread-123")
+	if err == nil {
+		t.Fatal("expected placeholder thread repository to fail")
+	}
+}
+
+func TestNewContactReadServiceUsesApplicationService(t *testing.T) {
+	service := newContactReadService()
+
+	_, err := service.GetContact(context.Background(), "contact-123")
+	if err == nil {
+		t.Fatal("expected placeholder contact repository to fail")
+	}
+}
+
 func TestNewReplyServiceUsesRealOutboundComposition(t *testing.T) {
 	service := newReplyService()
 

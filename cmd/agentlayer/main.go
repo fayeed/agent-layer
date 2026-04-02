@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/agentlayer/agentlayer/internal/api"
+	"github.com/agentlayer/agentlayer/internal/app"
 	"github.com/agentlayer/agentlayer/internal/contacts"
 	"github.com/agentlayer/agentlayer/internal/core"
 	"github.com/agentlayer/agentlayer/internal/domain"
@@ -42,9 +43,9 @@ func newServer() http.Handler {
 	mux.HandleFunc("GET /healthz", handleHealth)
 	mux.Handle("POST /threads/{threadID}/reply", api.NewReplyHandler(newReplyService()))
 	mux.Handle("POST /threads/{threadID}/escalate", api.NewThreadEscalateHandler(notImplementedThreadEscalationService{}))
-	mux.Handle("GET /threads/{threadID}", api.NewThreadHandler(notImplementedThreadService{}))
-	mux.Handle("GET /threads/{threadID}/messages", api.NewThreadMessagesHandler(notImplementedThreadMessagesService{}))
-	mux.Handle("GET /contacts/{contactID}", api.NewContactHandler(notImplementedContactService{}))
+	mux.Handle("GET /threads/{threadID}", api.NewThreadHandler(newThreadReadService()))
+	mux.Handle("GET /threads/{threadID}/messages", api.NewThreadMessagesHandler(newThreadMessagesReadService()))
+	mux.Handle("GET /contacts/{contactID}", api.NewContactHandler(newContactReadService()))
 	mux.Handle("POST /contacts/{contactID}/memory", api.NewContactMemoryHandler(notImplementedContactMemoryService{}))
 	mux.Handle("POST /provider/callbacks/outbound", api.NewOutboundCallbackHandler(outbound.NewCallbackParser(), newOutboundCallbackFlow()))
 	return mux
@@ -122,6 +123,18 @@ func newInboundProcessor() inbound.Processor {
 	)
 }
 
+func newThreadReadService() app.ThreadReadService {
+	return app.NewThreadReadService(notImplementedThreadRepository{})
+}
+
+func newThreadMessagesReadService() app.ThreadMessagesReadService {
+	return app.NewThreadMessagesReadService(notImplementedThreadMessagesRepository{}, 20)
+}
+
+func newContactReadService() app.ContactReadService {
+	return app.NewContactReadService(notImplementedContactRepository{})
+}
+
 func newInboundRecorder() inbound.Recorder {
 	return inbound.NewRecorder(
 		notImplementedInboundContactRepository{},
@@ -162,18 +175,6 @@ func runServers(httpServer serveServer, smtpServer serveServer) error {
 	}()
 
 	return <-errCh
-}
-
-type notImplementedThreadService struct{}
-
-func (notImplementedThreadService) GetThread(context.Context, string) (domain.Thread, error) {
-	return domain.Thread{}, errors.New("thread service not implemented")
-}
-
-type notImplementedContactService struct{}
-
-func (notImplementedContactService) GetContact(context.Context, string) (domain.Contact, error) {
-	return domain.Contact{}, errors.New("contact service not implemented")
 }
 
 type notImplementedThreadEscalationService struct{}
@@ -222,6 +223,24 @@ type notImplementedThreadLookup struct{}
 
 func (notImplementedThreadLookup) FindByMessageID(context.Context, string) (domain.Thread, bool, error) {
 	return domain.Thread{}, false, errors.New("thread lookup not implemented")
+}
+
+type notImplementedThreadRepository struct{}
+
+func (notImplementedThreadRepository) GetByID(context.Context, string) (domain.Thread, error) {
+	return domain.Thread{}, errors.New("thread repository not implemented")
+}
+
+type notImplementedThreadMessagesRepository struct{}
+
+func (notImplementedThreadMessagesRepository) ListByThreadID(context.Context, string, int) ([]domain.Message, error) {
+	return nil, errors.New("thread messages repository not implemented")
+}
+
+type notImplementedContactRepository struct{}
+
+func (notImplementedContactRepository) GetByID(context.Context, string) (domain.Contact, error) {
+	return domain.Contact{}, errors.New("contact repository not implemented")
 }
 
 type notImplementedInboundContactRepository struct{}
