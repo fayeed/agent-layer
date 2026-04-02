@@ -49,3 +49,27 @@ func TestNewServerRegistersV0RouteShapes(t *testing.T) {
 		}
 	}
 }
+
+func TestNewServerWiresThreadHandler(t *testing.T) {
+	server := newServer()
+	request := httptest.NewRequest(http.MethodGet, "/threads/thread-123", nil)
+	recorder := httptest.NewRecorder()
+
+	server.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected real thread handler path to return 500 from placeholder service, got %d", recorder.Code)
+	}
+}
+
+func TestNewServerLeavesUnwiredRoutesAsNotImplemented(t *testing.T) {
+	server := newServer()
+	request := httptest.NewRequest(http.MethodPost, "/threads/thread-123/reply", nil)
+	recorder := httptest.NewRecorder()
+
+	server.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotImplemented {
+		t.Fatalf("expected unwired route to return 501, got %d", recorder.Code)
+	}
+}

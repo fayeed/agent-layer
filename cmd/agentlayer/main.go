@@ -1,9 +1,14 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
+
+	"github.com/agentlayer/agentlayer/internal/api"
+	"github.com/agentlayer/agentlayer/internal/domain"
 )
 
 func main() {
@@ -20,7 +25,7 @@ func newServer() http.Handler {
 	mux.HandleFunc("GET /healthz", handleHealth)
 	mux.HandleFunc("POST /threads/{threadID}/reply", handleNotImplemented)
 	mux.HandleFunc("POST /threads/{threadID}/escalate", handleNotImplemented)
-	mux.HandleFunc("GET /threads/{threadID}", handleNotImplemented)
+	mux.Handle("GET /threads/{threadID}", api.NewThreadHandler(notImplementedThreadService{}))
 	mux.HandleFunc("GET /threads/{threadID}/messages", handleNotImplemented)
 	mux.HandleFunc("GET /contacts/{contactID}", handleNotImplemented)
 	mux.HandleFunc("POST /contacts/{contactID}/memory", handleNotImplemented)
@@ -42,4 +47,10 @@ func serverAddress() string {
 		return value
 	}
 	return ":8080"
+}
+
+type notImplementedThreadService struct{}
+
+func (notImplementedThreadService) GetThread(context.Context, string) (domain.Thread, error) {
+	return domain.Thread{}, errors.New("thread service not implemented")
 }
