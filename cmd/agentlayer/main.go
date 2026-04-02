@@ -6,17 +6,24 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/agentlayer/agentlayer/internal/api"
 	"github.com/agentlayer/agentlayer/internal/domain"
+	"github.com/agentlayer/agentlayer/internal/inbound"
 	"github.com/agentlayer/agentlayer/internal/outbound"
+	"github.com/agentlayer/agentlayer/internal/smtpedge"
+	smtp "github.com/emersion/go-smtp"
 )
 
 func main() {
-	addr := serverAddress()
-	log.Printf("agentlayer listening on %s", addr)
+	httpAddr := serverAddress()
+	smtpServer := newSMTPServer()
 
-	if err := http.ListenAndServe(addr, newServer()); err != nil {
+	log.Printf("agentlayer http listening on %s", httpAddr)
+	log.Printf("agentlayer smtp configured on %s", smtpServer.Addr)
+
+	if err := http.ListenAndServe(httpAddr, newServer()); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -48,6 +55,40 @@ func serverAddress() string {
 		return value
 	}
 	return ":8080"
+}
+
+func smtpAddress() string {
+	if value := os.Getenv("AGENTLAYER_SMTP_ADDR"); value != "" {
+		return value
+	}
+	return "localhost:2525"
+}
+
+func smtpDomain() string {
+	if value := os.Getenv("AGENTLAYER_SMTP_DOMAIN"); value != "" {
+		return value
+	}
+	return "localhost"
+}
+
+func newSMTPServer() *smtp.Server {
+	return smtpedge.NewServer(
+		smtpedge.NewBackend(func() smtpedge.CoreSession {
+			session := smtpedge.NewSession(
+				notImplementedInboxLookup{},
+				notImplementedRawMessageStore{},
+				notImplementedReceiptSink{},
+				time.Now,
+				func() string { return "raw/generated.eml" },
+				"smtp-session-placeholder",
+			)
+			return &session
+		}),
+		smtpedge.Config{
+			Addr:   smtpAddress(),
+			Domain: smtpDomain(),
+		},
+	)
 }
 
 type notImplementedThreadService struct{}
@@ -96,4 +137,22 @@ type notImplementedOutboundCallbackFlow struct{}
 
 func (notImplementedOutboundCallbackFlow) Apply(context.Context, outbound.CallbackFlowInput) (outbound.CallbackFlowResult, error) {
 	return outbound.CallbackFlowResult{}, errors.New("outbound callback flow not implemented")
+}
+
+type notImplementedInboxLookup struct{}
+
+func (notImplementedInboxLookup) FindByEmailAddress(context.Context, string) (domain.Inbox, bool, error) {
+	return domain.Inbox{}, false, errors.New("smtp inbox lookup not implemented")
+}
+
+type notImplementedRawMessageStore struct{}
+
+func (notImplementedRawMessageStore) Put(context.Context, string, []byte) error {
+	return errors.New("smtp raw message store not implemented")
+}
+
+type notImplementedReceiptSink struct{}
+
+func (notImplementedReceiptSink) Enqueue(context.Context, inbound.DurableReceiptRequest) error {
+	return errors.New("smtp receipt sink not implemented")
 }

@@ -102,3 +102,46 @@ func TestNewServerWiresRemainingHandlers(t *testing.T) {
 		}
 	}
 }
+
+func TestNewSMTPServerUsesDefaults(t *testing.T) {
+	t.Setenv("AGENTLAYER_SMTP_ADDR", "")
+	t.Setenv("AGENTLAYER_SMTP_DOMAIN", "")
+
+	server := newSMTPServer()
+
+	if server.Addr != "localhost:2525" {
+		t.Fatalf("expected default smtp addr, got %q", server.Addr)
+	}
+
+	if server.Domain != "localhost" {
+		t.Fatalf("expected default smtp domain, got %q", server.Domain)
+	}
+}
+
+func TestNewSMTPServerUsesEnvOverrides(t *testing.T) {
+	t.Setenv("AGENTLAYER_SMTP_ADDR", "127.0.0.1:2626")
+	t.Setenv("AGENTLAYER_SMTP_DOMAIN", "mail.agentlayer.dev")
+
+	server := newSMTPServer()
+
+	if server.Addr != "127.0.0.1:2626" {
+		t.Fatalf("expected configured smtp addr, got %q", server.Addr)
+	}
+
+	if server.Domain != "mail.agentlayer.dev" {
+		t.Fatalf("expected configured smtp domain, got %q", server.Domain)
+	}
+}
+
+func TestSMTPAddressHelpers(t *testing.T) {
+	t.Setenv("AGENTLAYER_SMTP_ADDR", "0.0.0.0:2526")
+	t.Setenv("AGENTLAYER_SMTP_DOMAIN", "smtp.example.com")
+
+	if got := smtpAddress(); got != "0.0.0.0:2526" {
+		t.Fatalf("expected smtp addr helper to read env, got %q", got)
+	}
+
+	if got := smtpDomain(); got != "smtp.example.com" {
+		t.Fatalf("expected smtp domain helper to read env, got %q", got)
+	}
+}
