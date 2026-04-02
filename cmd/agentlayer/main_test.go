@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -74,14 +75,30 @@ func TestNewServerWiresContactHandler(t *testing.T) {
 	}
 }
 
-func TestNewServerLeavesUnwiredRoutesAsNotImplemented(t *testing.T) {
+func TestNewServerWiresRemainingHandlers(t *testing.T) {
 	server := newServer()
-	request := httptest.NewRequest(http.MethodPost, "/threads/thread-123/reply", nil)
-	recorder := httptest.NewRecorder()
 
-	server.ServeHTTP(recorder, request)
+	tests := []struct {
+		method string
+		path   string
+		body   string
+		want   int
+	}{
+		{method: http.MethodPost, path: "/threads/thread-123/reply", body: "{}", want: http.StatusInternalServerError},
+		{method: http.MethodPost, path: "/threads/thread-123/escalate", body: "{}", want: http.StatusInternalServerError},
+		{method: http.MethodGet, path: "/threads/thread-123/messages", want: http.StatusInternalServerError},
+		{method: http.MethodPost, path: "/contacts/contact-123/memory", body: "{}", want: http.StatusInternalServerError},
+		{method: http.MethodPost, path: "/provider/callbacks/outbound", body: "{}", want: http.StatusBadRequest},
+	}
 
-	if recorder.Code != http.StatusNotImplemented {
-		t.Fatalf("expected unwired route to return 501, got %d", recorder.Code)
+	for _, tt := range tests {
+		request := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+		recorder := httptest.NewRecorder()
+
+		server.ServeHTTP(recorder, request)
+
+		if recorder.Code != tt.want {
+			t.Fatalf("expected route %s %s to return %d from wired handler, got %d", tt.method, tt.path, tt.want, recorder.Code)
+		}
 	}
 }
