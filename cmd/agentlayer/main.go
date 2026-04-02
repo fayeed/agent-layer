@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/agentlayer/agentlayer/internal/api"
+	"github.com/agentlayer/agentlayer/internal/core"
 	"github.com/agentlayer/agentlayer/internal/domain"
 	"github.com/agentlayer/agentlayer/internal/inbound"
 	"github.com/agentlayer/agentlayer/internal/outbound"
@@ -82,7 +83,7 @@ func newSMTPServer() *smtp.Server {
 			session := smtpedge.NewSession(
 				notImplementedInboxLookup{},
 				notImplementedRawMessageStore{},
-				notImplementedReceiptSink{},
+				smtpedge.NewReceiptSink(notImplementedStoredMessageHandler{}),
 				time.Now,
 				func() string { return "raw/generated.eml" },
 				"smtp-session-placeholder",
@@ -177,8 +178,8 @@ func (notImplementedRawMessageStore) Put(context.Context, string, []byte) error 
 	return errors.New("smtp raw message store not implemented")
 }
 
-type notImplementedReceiptSink struct{}
+type notImplementedStoredMessageHandler struct{}
 
-func (notImplementedReceiptSink) Enqueue(context.Context, inbound.DurableReceiptRequest) error {
-	return errors.New("smtp receipt sink not implemented")
+func (notImplementedStoredMessageHandler) HandleStoredMessage(context.Context, core.StoredInboundMessage) (inbound.HandleResult, error) {
+	return inbound.HandleResult{}, errors.New("stored inbound handler not implemented")
 }
