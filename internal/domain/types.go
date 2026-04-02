@@ -133,6 +133,11 @@ type Message struct {
 	TextBody          string
 	HTMLBody          string
 	RawMIMEObjectKey  string
+	DeliveryState     string
+	ProviderMessageID string
+	SentAt            time.Time
+	DeliveredAt       time.Time
+	BouncedAt         time.Time
 	CreatedAt         time.Time
 }
 
