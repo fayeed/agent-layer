@@ -42,11 +42,11 @@ func newServer() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealth)
 	mux.Handle("POST /threads/{threadID}/reply", api.NewReplyHandler(newReplyService()))
-	mux.Handle("POST /threads/{threadID}/escalate", api.NewThreadEscalateHandler(notImplementedThreadEscalationService{}))
+	mux.Handle("POST /threads/{threadID}/escalate", api.NewThreadEscalateHandler(newThreadEscalationService()))
 	mux.Handle("GET /threads/{threadID}", api.NewThreadHandler(newThreadReadService()))
 	mux.Handle("GET /threads/{threadID}/messages", api.NewThreadMessagesHandler(newThreadMessagesReadService()))
 	mux.Handle("GET /contacts/{contactID}", api.NewContactHandler(newContactReadService()))
-	mux.Handle("POST /contacts/{contactID}/memory", api.NewContactMemoryHandler(notImplementedContactMemoryService{}))
+	mux.Handle("POST /contacts/{contactID}/memory", api.NewContactMemoryHandler(newContactMemoryService()))
 	mux.Handle("POST /provider/callbacks/outbound", api.NewOutboundCallbackHandler(outbound.NewCallbackParser(), newOutboundCallbackFlow()))
 	return mux
 }
@@ -135,6 +135,14 @@ func newContactReadService() app.ContactReadService {
 	return app.NewContactReadService(notImplementedContactRepository{})
 }
 
+func newThreadEscalationService() app.ThreadEscalationService {
+	return app.NewThreadEscalationService(notImplementedThreadSaveRepository{}, time.Now)
+}
+
+func newContactMemoryService() app.ContactMemoryService {
+	return app.NewContactMemoryService(notImplementedContactMemoryRepository{}, time.Now)
+}
+
 func newInboundRecorder() inbound.Recorder {
 	return inbound.NewRecorder(
 		notImplementedInboundContactRepository{},
@@ -177,22 +185,10 @@ func runServers(httpServer serveServer, smtpServer serveServer) error {
 	return <-errCh
 }
 
-type notImplementedThreadEscalationService struct{}
-
-func (notImplementedThreadEscalationService) EscalateThread(context.Context, string, string) (domain.Thread, error) {
-	return domain.Thread{}, errors.New("thread escalation service not implemented")
-}
-
 type notImplementedThreadMessagesService struct{}
 
 func (notImplementedThreadMessagesService) ListThreadMessages(context.Context, string) ([]domain.Message, error) {
 	return nil, errors.New("thread messages service not implemented")
-}
-
-type notImplementedContactMemoryService struct{}
-
-func (notImplementedContactMemoryService) CreateContactMemory(context.Context, string, api.CreateContactMemoryInput) (domain.ContactMemoryEntry, error) {
-	return domain.ContactMemoryEntry{}, errors.New("contact memory service not implemented")
 }
 
 type notImplementedInboxLookup struct{}
@@ -241,6 +237,18 @@ type notImplementedContactRepository struct{}
 
 func (notImplementedContactRepository) GetByID(context.Context, string) (domain.Contact, error) {
 	return domain.Contact{}, errors.New("contact repository not implemented")
+}
+
+type notImplementedThreadSaveRepository struct{}
+
+func (notImplementedThreadSaveRepository) Save(context.Context, domain.Thread) (domain.Thread, error) {
+	return domain.Thread{}, errors.New("thread save repository not implemented")
+}
+
+type notImplementedContactMemoryRepository struct{}
+
+func (notImplementedContactMemoryRepository) Create(context.Context, domain.ContactMemoryEntry) (domain.ContactMemoryEntry, error) {
+	return domain.ContactMemoryEntry{}, errors.New("contact memory repository not implemented")
 }
 
 type notImplementedInboundContactRepository struct{}

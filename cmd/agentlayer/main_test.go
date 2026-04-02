@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentlayer/agentlayer/internal/api"
 	"github.com/agentlayer/agentlayer/internal/core"
 	"github.com/agentlayer/agentlayer/internal/domain"
 	"github.com/agentlayer/agentlayer/internal/inbound"
@@ -213,6 +214,28 @@ func TestNewContactReadServiceUsesApplicationService(t *testing.T) {
 	_, err := service.GetContact(context.Background(), "contact-123")
 	if err == nil {
 		t.Fatal("expected placeholder contact repository to fail")
+	}
+}
+
+func TestNewThreadEscalationServiceUsesApplicationService(t *testing.T) {
+	service := newThreadEscalationService()
+
+	_, err := service.EscalateThread(context.Background(), "thread-123", "needs human review")
+	if err == nil {
+		t.Fatal("expected placeholder thread save repository to fail")
+	}
+}
+
+func TestNewContactMemoryServiceUsesApplicationService(t *testing.T) {
+	service := newContactMemoryService()
+
+	_, err := service.CreateContactMemory(context.Background(), "contact-123", api.CreateContactMemoryInput{
+		ThreadID: "thread-123",
+		Note:     "Prefers email follow-up.",
+		Tags:     []string{"preference"},
+	})
+	if err == nil {
+		t.Fatal("expected placeholder contact memory repository to fail")
 	}
 }
 
