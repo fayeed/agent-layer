@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -410,6 +412,127 @@ func TestNewWebhookDeliveryListServiceUsesApplicationService(t *testing.T) {
 
 	if len(deliveries) != 2 || deliveries[0].ID != "delivery-newer" {
 		t.Fatalf("expected recency-ordered webhook deliveries, got %#v", deliveries)
+	}
+}
+
+func TestBootstrapAndInboundFlowPersistWebhookDelivery(t *testing.T) {
+	runtimeStore = newRuntimeStore()
+
+	type receivedWebhook struct {
+		Headers http.Header
+		Body    []byte
+	}
+
+	receivedCh := make(chan receivedWebhook, 1)
+	webhookServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body := make([]byte, request.ContentLength)
+		_, _ = request.Body.Read(body)
+		receivedCh <- receivedWebhook{
+			Headers: request.Header.Clone(),
+			Body:    bytes.Trim(body, "\x00"),
+		}
+		writer.WriteHeader(http.StatusAccepted)
+		_, _ = writer.Write([]byte(`{"ok":true}`))
+	}))
+	defer webhookServer.Close()
+
+	server := newServer()
+	bootstrapRequest := httptest.NewRequest(http.MethodPost, "/bootstrap", bytes.NewBufferString(`{
+		"organization_name":"Acme Support",
+		"agent_name":"Acme Agent",
+		"agent_status":"active",
+		"webhook_url":"`+webhookServer.URL+`",
+		"webhook_secret":"dev-secret",
+		"inbox_address":"agent@localhost",
+		"inbox_domain":"localhost",
+		"inbox_display_name":"Acme Inbox"
+	}`))
+	bootstrapRecorder := httptest.NewRecorder()
+	server.ServeHTTP(bootstrapRecorder, bootstrapRequest)
+
+	if bootstrapRecorder.Code != http.StatusCreated {
+		t.Fatalf("expected bootstrap to succeed, got %d", bootstrapRecorder.Code)
+	}
+
+	raw := "From: Sender Example <sender@example.com>\r\n" +
+		"To: Acme Inbox <agent@localhost>\r\n" +
+		"Subject: Hello World\r\n" +
+		"Message-ID: <message-123@example.com>\r\n" +
+		"MIME-Version: 1.0\r\n" +
+		"Content-Type: text/plain; charset=utf-8\r\n" +
+		"\r\n" +
+		"Plain body.\r\n"
+
+	if err := runtimeStore.Put(context.Background(), "raw/integration-message.eml", []byte(raw)); err != nil {
+		t.Fatalf("expected raw message seed to succeed, got error: %v", err)
+	}
+
+	result, err := newInboundService().HandleStoredMessage(context.Background(), core.StoredInboundMessage{
+		Receipt: core.InboundReceipt{
+			OrganizationID:      "org-local",
+			AgentID:             "agent-local",
+			InboxID:             "inbox-local",
+			EnvelopeSender:      "sender@example.com",
+			EnvelopeRecipients:  []string{"agent@localhost"},
+			RawMessageObjectKey: "raw/integration-message.eml",
+			ReceivedAt:          time.Date(2026, 4, 3, 23, 0, 0, 0, time.UTC),
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected inbound runtime flow to succeed, got error: %v", err)
+	}
+
+	if result.Message.ID == "" || result.Thread.ID == "" {
+		t.Fatalf("expected handled inbound result to persist message and thread, got %#v", result)
+	}
+
+	received := <-receivedCh
+	if received.Headers.Get("X-AgentLayer-Signature") == "" {
+		t.Fatalf("expected signed webhook headers, got %#v", received.Headers)
+	}
+
+	var payload struct {
+		EventType string `json:"event_type"`
+		Message   struct {
+			ID string `json:"id"`
+		} `json:"message"`
+	}
+	if err := json.Unmarshal(received.Body, &payload); err != nil {
+		t.Fatalf("expected webhook payload json, got error: %v", err)
+	}
+
+	if payload.EventType != "message.received" || payload.Message.ID == "" {
+		t.Fatalf("expected message.received webhook payload, got %#v", payload)
+	}
+
+	deliveries, err := runtimeStore.ListWebhookDeliveries(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("expected webhook deliveries to be persisted, got error: %v", err)
+	}
+
+	if len(deliveries) != 1 || deliveries[0].Status != "succeeded" {
+		t.Fatalf("expected succeeded webhook delivery record, got %#v", deliveries)
+	}
+
+	if deliveries[0].RequestURL != webhookServer.URL {
+		t.Fatalf("expected persisted request url, got %#v", deliveries[0])
+	}
+
+	readRequest := httptest.NewRequest(http.MethodGet, "/webhooks/deliveries", nil)
+	readRecorder := httptest.NewRecorder()
+	server.ServeHTTP(readRecorder, readRequest)
+
+	if readRecorder.Code != http.StatusOK {
+		t.Fatalf("expected webhook delivery list endpoint to succeed, got %d", readRecorder.Code)
+	}
+
+	var response []map[string]any
+	if err := json.Unmarshal(readRecorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("expected webhook delivery list json, got error: %v", err)
+	}
+
+	if len(response) != 1 {
+		t.Fatalf("expected one webhook delivery from admin endpoint, got %#v", response)
 	}
 }
 
