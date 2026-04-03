@@ -47,6 +47,7 @@ func newServer() http.Handler {
 	mux.HandleFunc("GET /healthz", handleHealth)
 	mux.Handle("GET /bootstrap", api.NewBootstrapReadHandler(newBootstrapReadHandlerService()))
 	mux.Handle("POST /bootstrap", api.NewBootstrapHandler(newBootstrapHandlerService()))
+	mux.Handle("GET /webhooks/deliveries", api.NewWebhookDeliveriesHandler(newWebhookDeliveriesHandlerService()))
 	mux.Handle("GET /webhooks/deliveries/{deliveryID}", api.NewWebhookDeliveryHandler(newWebhookDeliveryHandlerService()))
 	mux.Handle("POST /webhooks/deliveries/{deliveryID}/replay", api.NewWebhookReplayHandler(newWebhookReplayHandlerService()))
 	mux.Handle("POST /threads/{threadID}/reply", api.NewReplyHandler(newReplyService()))
@@ -252,6 +253,14 @@ func newWebhookDeliveryReadService() app.WebhookDeliveryReadService {
 	return app.NewWebhookDeliveryReadService(webhookDeliveryGetterAdapter{store: runtimeStore})
 }
 
+func newWebhookDeliveryListService() app.WebhookDeliveryListService {
+	return app.NewWebhookDeliveryListService(webhookDeliveryGetterAdapter{store: runtimeStore}, 20)
+}
+
+func newWebhookDeliveriesHandlerService() api.WebhookDeliveriesService {
+	return webhookDeliveryListServiceAdapter{service: newWebhookDeliveryListService()}
+}
+
 func newWebhookDeliveryHandlerService() api.WebhookDeliveryService {
 	return webhookDeliveryReadServiceAdapter{service: newWebhookDeliveryReadService()}
 }
@@ -444,6 +453,10 @@ type bootstrapServiceAdapter struct{ service app.BootstrapService }
 
 type bootstrapReadServiceAdapter struct{ service app.BootstrapReadService }
 
+type webhookDeliveryListServiceAdapter struct {
+	service app.WebhookDeliveryListService
+}
+
 type webhookDeliveryReadServiceAdapter struct {
 	service app.WebhookDeliveryReadService
 }
@@ -487,6 +500,10 @@ func (a bootstrapReadServiceAdapter) GetBootstrap(ctx context.Context) (api.Boot
 		WebhookURL:     result.Agent.WebhookURL,
 		InboxAddress:   result.Inbox.EmailAddress,
 	}, nil
+}
+
+func (a webhookDeliveryListServiceAdapter) ListWebhookDeliveries(ctx context.Context) ([]domain.WebhookDelivery, error) {
+	return a.service.ListWebhookDeliveries(ctx)
 }
 
 func (a webhookDeliveryReadServiceAdapter) GetWebhookDelivery(ctx context.Context, deliveryID string) (domain.WebhookDelivery, error) {
@@ -539,4 +556,8 @@ type webhookDeliveryGetterAdapter struct{ store *memorystore.Store }
 
 func (a webhookDeliveryGetterAdapter) GetWebhookDeliveryByID(ctx context.Context, deliveryID string) (domain.WebhookDelivery, error) {
 	return a.store.GetWebhookDeliveryByID(ctx, deliveryID)
+}
+
+func (a webhookDeliveryGetterAdapter) ListWebhookDeliveries(ctx context.Context, limit int) ([]domain.WebhookDelivery, error) {
+	return a.store.ListWebhookDeliveries(ctx, limit)
 }

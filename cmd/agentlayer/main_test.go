@@ -44,6 +44,7 @@ func TestNewServerRegistersV0RouteShapes(t *testing.T) {
 	}{
 		{method: http.MethodGet, path: "/bootstrap"},
 		{method: http.MethodPost, path: "/bootstrap"},
+		{method: http.MethodGet, path: "/webhooks/deliveries"},
 		{method: http.MethodGet, path: "/webhooks/deliveries/delivery-123"},
 		{method: http.MethodPost, path: "/webhooks/deliveries/delivery-123/replay"},
 		{method: http.MethodPost, path: "/threads/thread-123/reply"},
@@ -105,6 +106,7 @@ func TestNewServerWiresRemainingHandlers(t *testing.T) {
 	}{
 		{method: http.MethodGet, path: "/bootstrap", want: http.StatusOK},
 		{method: http.MethodPost, path: "/bootstrap", body: "{}", want: http.StatusCreated},
+		{method: http.MethodGet, path: "/webhooks/deliveries", want: http.StatusOK},
 		{method: http.MethodGet, path: "/webhooks/deliveries/delivery-123", want: http.StatusInternalServerError},
 		{method: http.MethodPost, path: "/webhooks/deliveries/delivery-123/replay", want: http.StatusInternalServerError},
 		{method: http.MethodPost, path: "/threads/thread-123/reply", body: "{}", want: http.StatusInternalServerError},
@@ -385,6 +387,29 @@ func TestNewWebhookDeliveryReadServiceUsesApplicationService(t *testing.T) {
 
 	if delivery.ID != "delivery-123" || delivery.ResponseCode != 500 {
 		t.Fatalf("expected loaded webhook delivery, got %#v", delivery)
+	}
+}
+
+func TestNewWebhookDeliveryListServiceUsesApplicationService(t *testing.T) {
+	runtimeStore = newRuntimeStore()
+	_, _ = runtimeStore.SaveWebhookDelivery(context.Background(), domain.WebhookDelivery{
+		ID:        "delivery-older",
+		EventID:   "event-older",
+		UpdatedAt: time.Date(2026, 4, 3, 10, 0, 0, 0, time.UTC),
+	})
+	_, _ = runtimeStore.SaveWebhookDelivery(context.Background(), domain.WebhookDelivery{
+		ID:        "delivery-newer",
+		EventID:   "event-newer",
+		UpdatedAt: time.Date(2026, 4, 3, 11, 0, 0, 0, time.UTC),
+	})
+
+	deliveries, err := newWebhookDeliveryListService().ListWebhookDeliveries(context.Background())
+	if err != nil {
+		t.Fatalf("expected webhook delivery list to succeed, got error: %v", err)
+	}
+
+	if len(deliveries) != 2 || deliveries[0].ID != "delivery-newer" {
+		t.Fatalf("expected recency-ordered webhook deliveries, got %#v", deliveries)
 	}
 }
 

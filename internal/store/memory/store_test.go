@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/agentlayer/agentlayer/internal/domain"
 )
@@ -189,5 +190,29 @@ func TestStoreSupportsMemoryAndWebhookDeliveryState(t *testing.T) {
 
 	if loaded.EventID != "event-123" {
 		t.Fatalf("expected stored webhook delivery, got %#v", loaded)
+	}
+}
+
+func TestStoreListsWebhookDeliveriesByMostRecentUpdate(t *testing.T) {
+	store := NewStore()
+
+	_, _ = store.SaveWebhookDelivery(context.Background(), domain.WebhookDelivery{
+		ID:        "delivery-older",
+		EventID:   "event-older",
+		UpdatedAt: time.Date(2026, 4, 3, 10, 0, 0, 0, time.UTC),
+	})
+	_, _ = store.SaveWebhookDelivery(context.Background(), domain.WebhookDelivery{
+		ID:        "delivery-newer",
+		EventID:   "event-newer",
+		UpdatedAt: time.Date(2026, 4, 3, 11, 0, 0, 0, time.UTC),
+	})
+
+	deliveries, err := store.ListWebhookDeliveries(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("expected webhook delivery list to succeed, got error: %v", err)
+	}
+
+	if len(deliveries) != 2 || deliveries[0].ID != "delivery-newer" || deliveries[1].ID != "delivery-older" {
+		t.Fatalf("expected deliveries ordered by recency, got %#v", deliveries)
 	}
 }

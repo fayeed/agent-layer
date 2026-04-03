@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"errors"
+	"sort"
 	"sync"
 
 	"github.com/agentlayer/agentlayer/internal/domain"
@@ -302,4 +303,27 @@ func (s *Store) GetWebhookDeliveryByID(_ context.Context, deliveryID string) (do
 		return domain.WebhookDelivery{}, ErrMessageNotFound
 	}
 	return delivery, nil
+}
+
+func (s *Store) ListWebhookDeliveries(_ context.Context, limit int) ([]domain.WebhookDelivery, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := make([]domain.WebhookDelivery, 0, len(s.webhookDeliveriesByID))
+	for _, delivery := range s.webhookDeliveriesByID {
+		out = append(out, delivery)
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].UpdatedAt.Equal(out[j].UpdatedAt) {
+			return out[i].UpdatedAt.After(out[j].UpdatedAt)
+		}
+		return out[i].ID > out[j].ID
+	})
+
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+
+	return out, nil
 }
