@@ -47,6 +47,7 @@ func newServer() http.Handler {
 	mux.HandleFunc("GET /healthz", handleHealth)
 	mux.Handle("GET /bootstrap", api.NewBootstrapReadHandler(newBootstrapReadHandlerService()))
 	mux.Handle("POST /bootstrap", api.NewBootstrapHandler(newBootstrapHandlerService()))
+	mux.Handle("POST /webhooks/deliveries/{deliveryID}/replay", api.NewWebhookReplayHandler(newWebhookReplayHandlerService()))
 	mux.Handle("POST /threads/{threadID}/reply", api.NewReplyHandler(newReplyService()))
 	mux.Handle("POST /threads/{threadID}/escalate", api.NewThreadEscalateHandler(newThreadEscalationService()))
 	mux.Handle("GET /threads/{threadID}", api.NewThreadHandler(newThreadReadService()))
@@ -246,6 +247,10 @@ func newBootstrapReadHandlerService() api.BootstrapReadService {
 	return bootstrapReadServiceAdapter{service: newBootstrapReadService()}
 }
 
+func newWebhookReplayHandlerService() api.WebhookReplayService {
+	return webhookReplayServiceAdapter{service: newWebhookReplayService()}
+}
+
 func newInboundRecorder() inbound.Recorder {
 	return inbound.NewRecorder(
 		runtimeStore,
@@ -283,6 +288,15 @@ func newMessageReceivedDeliveryService() webhooks.DeliveryService {
 	)
 	return webhooks.NewDeliveryService(
 		base,
+		webhooks.NewRecorder(webhookDeliveryRepositoryAdapter{store: runtimeStore}),
+	)
+}
+
+func newWebhookReplayService() webhooks.ReplayService {
+	dispatcher := webhooks.NewDispatcher(&http.Client{Timeout: 5 * time.Second}, time.Now)
+	return webhooks.NewReplayService(
+		webhookDeliveryGetterAdapter{store: runtimeStore},
+		dispatcher,
 		webhooks.NewRecorder(webhookDeliveryRepositoryAdapter{store: runtimeStore}),
 	)
 }
@@ -421,6 +435,8 @@ type bootstrapServiceAdapter struct{ service app.BootstrapService }
 
 type bootstrapReadServiceAdapter struct{ service app.BootstrapReadService }
 
+type webhookReplayServiceAdapter struct{ service webhooks.ReplayService }
+
 func (a bootstrapServiceAdapter) BootstrapLocal(ctx context.Context, input api.BootstrapInput) (api.BootstrapResult, error) {
 	result, err := a.service.BootstrapLocal(ctx, app.BootstrapInput{
 		OrganizationName: input.OrganizationName,
@@ -460,6 +476,14 @@ func (a bootstrapReadServiceAdapter) GetBootstrap(ctx context.Context) (api.Boot
 	}, nil
 }
 
+func (a webhookReplayServiceAdapter) ReplayDelivery(ctx context.Context, deliveryID string) (domain.WebhookDelivery, error) {
+	result, err := a.service.ReplayDelivery(ctx, deliveryID)
+	if err != nil {
+		return domain.WebhookDelivery{}, err
+	}
+	return result.Delivery, nil
+}
+
 func (a contactGetterAdapter) GetByID(ctx context.Context, contactID string) (domain.Contact, error) {
 	return a.store.GetContactByID(ctx, contactID)
 }
@@ -492,4 +516,10 @@ type webhookDeliveryRepositoryAdapter struct{ store *memorystore.Store }
 
 func (a webhookDeliveryRepositoryAdapter) Save(ctx context.Context, delivery domain.WebhookDelivery) (domain.WebhookDelivery, error) {
 	return a.store.SaveWebhookDelivery(ctx, delivery)
+}
+
+type webhookDeliveryGetterAdapter struct{ store *memorystore.Store }
+
+func (a webhookDeliveryGetterAdapter) GetWebhookDeliveryByID(ctx context.Context, deliveryID string) (domain.WebhookDelivery, error) {
+	return a.store.GetWebhookDeliveryByID(ctx, deliveryID)
 }

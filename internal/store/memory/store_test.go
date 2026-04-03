@@ -181,4 +181,13 @@ func TestStoreSupportsMemoryAndWebhookDeliveryState(t *testing.T) {
 	if delivery.ID != "delivery-123" {
 		t.Fatalf("expected saved webhook delivery, got %#v", delivery)
 	}
+
+	loaded, err := store.GetWebhookDeliveryByID(context.Background(), "delivery-123")
+	if err != nil {
+		t.Fatalf("expected webhook delivery get to succeed, got error: %v", err)
+	}
+
+	if loaded.EventID != "event-123" {
+		t.Fatalf("expected stored webhook delivery, got %#v", loaded)
+	}
 }

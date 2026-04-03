@@ -293,3 +293,13 @@ func (s *Store) SaveWebhookDelivery(_ context.Context, delivery domain.WebhookDe
 	s.webhookDeliveriesByID[delivery.ID] = delivery
 	return delivery, nil
 }
+
+func (s *Store) GetWebhookDeliveryByID(_ context.Context, deliveryID string) (domain.WebhookDelivery, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	delivery, ok := s.webhookDeliveriesByID[deliveryID]
+	if !ok {
+		return domain.WebhookDelivery{}, ErrMessageNotFound
+	}
+	return delivery, nil
+}

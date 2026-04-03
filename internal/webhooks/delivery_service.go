@@ -39,8 +39,13 @@ func (s DeliveryService) DeliverAndRecordMessageReceived(ctx context.Context, in
 		return DeliveryResult{}, err
 	}
 
+	delivery := delivered.Request.Delivery
+	delivery.RequestURL = input.URL
+	delivery.RequestPayload = append([]byte(nil), delivered.Request.Payload...)
+	delivery.RequestHeaders = copyHeaders(delivered.Request.Headers)
+
 	recorded, err := s.recorder.RecordAttempt(ctx, RecordAttemptInput{
-		Delivery: delivered.Request.Delivery,
+		Delivery: delivery,
 		Response: delivered.Response,
 	})
 	if err != nil {
@@ -52,4 +57,15 @@ func (s DeliveryService) DeliverAndRecordMessageReceived(ctx context.Context, in
 		Response: delivered.Response,
 		Delivery: recorded,
 	}, nil
+}
+
+func copyHeaders(headers map[string]string) map[string]string {
+	if len(headers) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(headers))
+	for key, value := range headers {
+		out[key] = value
+	}
+	return out
 }

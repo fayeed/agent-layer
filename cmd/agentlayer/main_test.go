@@ -44,6 +44,7 @@ func TestNewServerRegistersV0RouteShapes(t *testing.T) {
 	}{
 		{method: http.MethodGet, path: "/bootstrap"},
 		{method: http.MethodPost, path: "/bootstrap"},
+		{method: http.MethodPost, path: "/webhooks/deliveries/delivery-123/replay"},
 		{method: http.MethodPost, path: "/threads/thread-123/reply"},
 		{method: http.MethodPost, path: "/threads/thread-123/escalate"},
 		{method: http.MethodGet, path: "/threads/thread-123"},
@@ -103,6 +104,7 @@ func TestNewServerWiresRemainingHandlers(t *testing.T) {
 	}{
 		{method: http.MethodGet, path: "/bootstrap", want: http.StatusOK},
 		{method: http.MethodPost, path: "/bootstrap", body: "{}", want: http.StatusCreated},
+		{method: http.MethodPost, path: "/webhooks/deliveries/delivery-123/replay", want: http.StatusInternalServerError},
 		{method: http.MethodPost, path: "/threads/thread-123/reply", body: "{}", want: http.StatusInternalServerError},
 		{method: http.MethodPost, path: "/threads/thread-123/escalate", body: "{}", want: http.StatusAccepted},
 		{method: http.MethodGet, path: "/threads/thread-123/messages", want: http.StatusOK},

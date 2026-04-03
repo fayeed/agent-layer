@@ -166,6 +166,9 @@ type WebhookDelivery struct {
 	AgentID        string
 	EventType      string
 	EventID        string
+	RequestURL     string
+	RequestPayload []byte
+	RequestHeaders map[string]string
 	Status         string
 	AttemptCount   int
 	ResponseCode   int
