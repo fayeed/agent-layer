@@ -47,6 +47,7 @@ func newServer() http.Handler {
 	mux.HandleFunc("GET /healthz", handleHealth)
 	mux.Handle("GET /bootstrap", api.NewBootstrapReadHandler(newBootstrapReadHandlerService()))
 	mux.Handle("POST /bootstrap", api.NewBootstrapHandler(newBootstrapHandlerService()))
+	mux.Handle("GET /webhooks/deliveries/{deliveryID}", api.NewWebhookDeliveryHandler(newWebhookDeliveryHandlerService()))
 	mux.Handle("POST /webhooks/deliveries/{deliveryID}/replay", api.NewWebhookReplayHandler(newWebhookReplayHandlerService()))
 	mux.Handle("POST /threads/{threadID}/reply", api.NewReplyHandler(newReplyService()))
 	mux.Handle("POST /threads/{threadID}/escalate", api.NewThreadEscalateHandler(newThreadEscalationService()))
@@ -247,6 +248,14 @@ func newBootstrapReadHandlerService() api.BootstrapReadService {
 	return bootstrapReadServiceAdapter{service: newBootstrapReadService()}
 }
 
+func newWebhookDeliveryReadService() app.WebhookDeliveryReadService {
+	return app.NewWebhookDeliveryReadService(webhookDeliveryGetterAdapter{store: runtimeStore})
+}
+
+func newWebhookDeliveryHandlerService() api.WebhookDeliveryService {
+	return webhookDeliveryReadServiceAdapter{service: newWebhookDeliveryReadService()}
+}
+
 func newWebhookReplayHandlerService() api.WebhookReplayService {
 	return webhookReplayServiceAdapter{service: newWebhookReplayService()}
 }
@@ -435,6 +444,10 @@ type bootstrapServiceAdapter struct{ service app.BootstrapService }
 
 type bootstrapReadServiceAdapter struct{ service app.BootstrapReadService }
 
+type webhookDeliveryReadServiceAdapter struct {
+	service app.WebhookDeliveryReadService
+}
+
 type webhookReplayServiceAdapter struct{ service webhooks.ReplayService }
 
 func (a bootstrapServiceAdapter) BootstrapLocal(ctx context.Context, input api.BootstrapInput) (api.BootstrapResult, error) {
@@ -474,6 +487,10 @@ func (a bootstrapReadServiceAdapter) GetBootstrap(ctx context.Context) (api.Boot
 		WebhookURL:     result.Agent.WebhookURL,
 		InboxAddress:   result.Inbox.EmailAddress,
 	}, nil
+}
+
+func (a webhookDeliveryReadServiceAdapter) GetWebhookDelivery(ctx context.Context, deliveryID string) (domain.WebhookDelivery, error) {
+	return a.service.GetWebhookDelivery(ctx, deliveryID)
 }
 
 func (a webhookReplayServiceAdapter) ReplayDelivery(ctx context.Context, deliveryID string) (domain.WebhookDelivery, error) {
