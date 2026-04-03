@@ -11,11 +11,11 @@ import (
 	"github.com/agentlayer/agentlayer/internal/api"
 	"github.com/agentlayer/agentlayer/internal/app"
 	"github.com/agentlayer/agentlayer/internal/contacts"
-	"github.com/agentlayer/agentlayer/internal/core"
 	"github.com/agentlayer/agentlayer/internal/domain"
 	"github.com/agentlayer/agentlayer/internal/inbound"
 	"github.com/agentlayer/agentlayer/internal/outbound"
 	"github.com/agentlayer/agentlayer/internal/parser"
+	devprovider "github.com/agentlayer/agentlayer/internal/providers/dev"
 	"github.com/agentlayer/agentlayer/internal/smtpedge"
 	memorystore "github.com/agentlayer/agentlayer/internal/store/memory"
 	"github.com/agentlayer/agentlayer/internal/threading"
@@ -171,7 +171,7 @@ func newReplyService() outbound.Service {
 	return outbound.NewService(
 		outbound.NewAssembler(func() string { return "<generated@agentlayer.local>" }),
 		outbound.NewRecorderWithThreads(runtimeStore, runtimeStore),
-		outbound.NewSender(notImplementedEmailProvider{}),
+		outbound.NewSender(devprovider.NewEmailProvider(time.Now)),
 		outbound.NewStatusRecorder(messageStatusRepositoryAdapter{store: runtimeStore}),
 		time.Now,
 	)
@@ -301,20 +301,6 @@ type notImplementedOutboundSaveMessageRepository struct{}
 
 func (notImplementedOutboundSaveMessageRepository) Save(context.Context, domain.Message) (domain.Message, error) {
 	return domain.Message{}, errors.New("outbound save message repository not implemented")
-}
-
-type notImplementedEmailProvider struct{}
-
-func (notImplementedEmailProvider) Send(context.Context, core.OutboundSendRequest) (core.SendResult, error) {
-	return core.SendResult{}, errors.New("email provider not implemented")
-}
-
-func (notImplementedEmailProvider) GetDeliveryStatus(context.Context, string) (core.DeliveryStatus, error) {
-	return core.DeliveryStatus{}, errors.New("email provider not implemented")
-}
-
-func (notImplementedEmailProvider) HealthCheck(context.Context) (core.ProviderHealth, error) {
-	return core.ProviderHealth{}, errors.New("email provider not implemented")
 }
 
 type notImplementedProviderMessageLookup struct{}

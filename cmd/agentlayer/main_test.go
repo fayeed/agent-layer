@@ -298,7 +298,7 @@ func TestNewReplyServiceUsesRealOutboundComposition(t *testing.T) {
 	runtimeStore = newRuntimeStore()
 	service := newReplyService()
 
-	_, err := service.SendReply(context.Background(), outbound.SendReplyInput{
+	result, err := service.SendReply(context.Background(), outbound.SendReplyInput{
 		Organization: domain.Organization{ID: "org-123"},
 		Agent:        domain.Agent{ID: "agent-123"},
 		Inbox: domain.Inbox{
@@ -321,8 +321,16 @@ func TestNewReplyServiceUsesRealOutboundComposition(t *testing.T) {
 		BodyText:  "Thanks for reaching out.",
 		ObjectKey: "outbound/reply-123.eml",
 	})
-	if err == nil {
-		t.Fatal("expected placeholder outbound repositories/provider to fail")
+	if err != nil {
+		t.Fatalf("expected runtime store-backed outbound reply to succeed, got error: %v", err)
+	}
+
+	if result.Message.DeliveryState != "sent" {
+		t.Fatalf("expected sent outbound message, got %#v", result.Message)
+	}
+
+	if result.SendResult.ProviderMessageID == "" {
+		t.Fatalf("expected provider result to include a provider message id, got %#v", result.SendResult)
 	}
 }
 
