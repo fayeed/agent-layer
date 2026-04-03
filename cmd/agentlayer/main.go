@@ -17,9 +17,12 @@ import (
 	"github.com/agentlayer/agentlayer/internal/outbound"
 	"github.com/agentlayer/agentlayer/internal/parser"
 	"github.com/agentlayer/agentlayer/internal/smtpedge"
+	memorystore "github.com/agentlayer/agentlayer/internal/store/memory"
 	"github.com/agentlayer/agentlayer/internal/threading"
 	smtp "github.com/emersion/go-smtp"
 )
+
+var runtimeStore = newRuntimeStore()
 
 func main() {
 	httpAddr := serverAddress()
@@ -81,12 +84,25 @@ func smtpDomain() string {
 	return "localhost"
 }
 
+func newRuntimeStore() *memorystore.Store {
+	store := memorystore.NewStore()
+	store.SeedInbox(domain.Inbox{
+		ID:             "inbox-local",
+		OrganizationID: "org-local",
+		AgentID:        "agent-local",
+		EmailAddress:   "agent@localhost",
+		Domain:         "localhost",
+		DisplayName:    "AgentLayer Local",
+	})
+	return store
+}
+
 func newSMTPServer() *smtp.Server {
 	return smtpedge.NewServer(
 		smtpedge.NewBackend(func() smtpedge.CoreSession {
 			session := smtpedge.NewSession(
-				notImplementedInboxLookup{},
-				notImplementedRawMessageStore{},
+				runtimeStore,
+				runtimeStore,
 				smtpedge.NewReceiptSink(newInboundService()),
 				time.Now,
 				func() string { return "raw/generated.eml" },
@@ -117,46 +133,46 @@ func newInboundService() inbound.Service {
 
 func newInboundProcessor() inbound.Processor {
 	return inbound.NewProcessor(
-		parser.New(notImplementedRawMessageReader{}),
-		contacts.NewResolver(notImplementedContactLookup{}),
-		threading.NewResolver(notImplementedThreadLookup{}),
+		parser.New(runtimeStore),
+		contacts.NewResolver(runtimeStore),
+		threading.NewResolver(runtimeStore),
 	)
 }
 
 func newThreadReadService() app.ThreadReadService {
-	return app.NewThreadReadService(notImplementedThreadRepository{})
+	return app.NewThreadReadService(runtimeStore)
 }
 
 func newThreadMessagesReadService() app.ThreadMessagesReadService {
-	return app.NewThreadMessagesReadService(notImplementedThreadMessagesRepository{}, 20)
+	return app.NewThreadMessagesReadService(runtimeStore, 20)
 }
 
 func newContactReadService() app.ContactReadService {
-	return app.NewContactReadService(notImplementedContactRepository{})
+	return app.NewContactReadService(contactGetterAdapter{store: runtimeStore})
 }
 
 func newThreadEscalationService() app.ThreadEscalationService {
-	return app.NewThreadEscalationService(notImplementedThreadSaveRepository{}, time.Now)
+	return app.NewThreadEscalationService(runtimeStore, time.Now)
 }
 
 func newContactMemoryService() app.ContactMemoryService {
-	return app.NewContactMemoryService(notImplementedContactMemoryRepository{}, time.Now)
+	return app.NewContactMemoryService(contactMemoryWriterAdapter{store: runtimeStore}, time.Now)
 }
 
 func newInboundRecorder() inbound.Recorder {
 	return inbound.NewRecorder(
-		notImplementedInboundContactRepository{},
-		notImplementedInboundThreadRepository{},
-		notImplementedInboundMessageRepository{},
+		runtimeStore,
+		runtimeStore,
+		runtimeStore,
 	)
 }
 
 func newReplyService() outbound.Service {
 	return outbound.NewService(
 		outbound.NewAssembler(func() string { return "<generated@agentlayer.local>" }),
-		outbound.NewRecorderWithThreads(notImplementedOutboundCreateMessageRepository{}, notImplementedOutboundThreadRepository{}),
+		outbound.NewRecorderWithThreads(runtimeStore, runtimeStore),
 		outbound.NewSender(notImplementedEmailProvider{}),
-		outbound.NewStatusRecorder(notImplementedOutboundSaveMessageRepository{}),
+		outbound.NewStatusRecorder(messageStatusRepositoryAdapter{store: runtimeStore}),
 		time.Now,
 	)
 }
@@ -164,10 +180,10 @@ func newReplyService() outbound.Service {
 func newOutboundCallbackFlow() outbound.CallbackFlow {
 	return outbound.NewCallbackFlow(
 		outbound.NewCallbackService(
-			notImplementedProviderMessageLookup{},
-			outbound.NewDeliveryRecorder(notImplementedOutboundSaveMessageRepository{}),
+			runtimeStore,
+			outbound.NewDeliveryRecorder(messageStatusRepositoryAdapter{store: runtimeStore}),
 		),
-		outbound.NewSuppressionService(notImplementedSuppressionRepository{}),
+		outbound.NewSuppressionService(suppressionRepositoryAdapter{store: runtimeStore}),
 	)
 }
 
@@ -311,4 +327,28 @@ type notImplementedSuppressionRepository struct{}
 
 func (notImplementedSuppressionRepository) Save(context.Context, domain.SuppressedAddress) (domain.SuppressedAddress, error) {
 	return domain.SuppressedAddress{}, errors.New("suppression repository not implemented")
+}
+
+type contactGetterAdapter struct{ store *memorystore.Store }
+
+func (a contactGetterAdapter) GetByID(ctx context.Context, contactID string) (domain.Contact, error) {
+	return a.store.GetContactByID(ctx, contactID)
+}
+
+type contactMemoryWriterAdapter struct{ store *memorystore.Store }
+
+func (a contactMemoryWriterAdapter) Create(ctx context.Context, entry domain.ContactMemoryEntry) (domain.ContactMemoryEntry, error) {
+	return a.store.CreateMemory(ctx, entry)
+}
+
+type messageStatusRepositoryAdapter struct{ store *memorystore.Store }
+
+func (a messageStatusRepositoryAdapter) Save(ctx context.Context, message domain.Message) (domain.Message, error) {
+	return a.store.SaveMessage(ctx, message)
+}
+
+type suppressionRepositoryAdapter struct{ store *memorystore.Store }
+
+func (a suppressionRepositoryAdapter) Save(ctx context.Context, record domain.SuppressedAddress) (domain.SuppressedAddress, error) {
+	return a.store.SaveSuppression(ctx, record)
 }

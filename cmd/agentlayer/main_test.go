@@ -17,6 +17,7 @@ import (
 )
 
 func TestNewServerExposesHealthEndpoint(t *testing.T) {
+	runtimeStore = newRuntimeStore()
 	server := newServer()
 	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	recorder := httptest.NewRecorder()
@@ -33,6 +34,7 @@ func TestNewServerExposesHealthEndpoint(t *testing.T) {
 }
 
 func TestNewServerRegistersV0RouteShapes(t *testing.T) {
+	runtimeStore = newRuntimeStore()
 	server := newServer()
 
 	tests := []struct {
@@ -61,6 +63,7 @@ func TestNewServerRegistersV0RouteShapes(t *testing.T) {
 }
 
 func TestNewServerWiresThreadHandler(t *testing.T) {
+	runtimeStore = newRuntimeStore()
 	server := newServer()
 	request := httptest.NewRequest(http.MethodGet, "/threads/thread-123", nil)
 	recorder := httptest.NewRecorder()
@@ -73,6 +76,7 @@ func TestNewServerWiresThreadHandler(t *testing.T) {
 }
 
 func TestNewServerWiresContactHandler(t *testing.T) {
+	runtimeStore = newRuntimeStore()
 	server := newServer()
 	request := httptest.NewRequest(http.MethodGet, "/contacts/contact-123", nil)
 	recorder := httptest.NewRecorder()
@@ -85,6 +89,7 @@ func TestNewServerWiresContactHandler(t *testing.T) {
 }
 
 func TestNewServerWiresRemainingHandlers(t *testing.T) {
+	runtimeStore = newRuntimeStore()
 	server := newServer()
 
 	tests := []struct {
@@ -94,9 +99,9 @@ func TestNewServerWiresRemainingHandlers(t *testing.T) {
 		want   int
 	}{
 		{method: http.MethodPost, path: "/threads/thread-123/reply", body: "{}", want: http.StatusInternalServerError},
-		{method: http.MethodPost, path: "/threads/thread-123/escalate", body: "{}", want: http.StatusInternalServerError},
-		{method: http.MethodGet, path: "/threads/thread-123/messages", want: http.StatusInternalServerError},
-		{method: http.MethodPost, path: "/contacts/contact-123/memory", body: "{}", want: http.StatusInternalServerError},
+		{method: http.MethodPost, path: "/threads/thread-123/escalate", body: "{}", want: http.StatusAccepted},
+		{method: http.MethodGet, path: "/threads/thread-123/messages", want: http.StatusOK},
+		{method: http.MethodPost, path: "/contacts/contact-123/memory", body: "{}", want: http.StatusCreated},
 		{method: http.MethodPost, path: "/provider/callbacks/outbound", body: "{}", want: http.StatusBadRequest},
 	}
 
@@ -113,6 +118,7 @@ func TestNewServerWiresRemainingHandlers(t *testing.T) {
 }
 
 func TestNewSMTPServerUsesDefaults(t *testing.T) {
+	runtimeStore = newRuntimeStore()
 	t.Setenv("AGENTLAYER_SMTP_ADDR", "")
 	t.Setenv("AGENTLAYER_SMTP_DOMAIN", "")
 
@@ -128,6 +134,7 @@ func TestNewSMTPServerUsesDefaults(t *testing.T) {
 }
 
 func TestNewSMTPServerUsesEnvOverrides(t *testing.T) {
+	runtimeStore = newRuntimeStore()
 	t.Setenv("AGENTLAYER_SMTP_ADDR", "127.0.0.1:2626")
 	t.Setenv("AGENTLAYER_SMTP_DOMAIN", "mail.agentlayer.dev")
 
@@ -143,6 +150,7 @@ func TestNewSMTPServerUsesEnvOverrides(t *testing.T) {
 }
 
 func TestSMTPAddressHelpers(t *testing.T) {
+	runtimeStore = newRuntimeStore()
 	t.Setenv("AGENTLAYER_SMTP_ADDR", "0.0.0.0:2526")
 	t.Setenv("AGENTLAYER_SMTP_DOMAIN", "smtp.example.com")
 
@@ -156,15 +164,17 @@ func TestSMTPAddressHelpers(t *testing.T) {
 }
 
 func TestNewInboundServiceUsesComposedPlaceholderDependencies(t *testing.T) {
+	runtimeStore = newRuntimeStore()
 	service := newInboundService()
 
 	_, err := service.HandleStoredMessage(context.Background(), core.StoredInboundMessage{})
 	if err == nil {
-		t.Fatal("expected placeholder inbound service to return an error")
+		t.Fatal("expected inbound service to fail until raw mime is present in the runtime store")
 	}
 }
 
 func TestNewInboundProcessorUsesRealProcessorChain(t *testing.T) {
+	runtimeStore = newRuntimeStore()
 	processor := newInboundProcessor()
 
 	_, err := processor.Process(context.Background(), core.StoredInboundMessage{
@@ -182,64 +192,110 @@ func TestNewInboundProcessorUsesRealProcessorChain(t *testing.T) {
 }
 
 func TestNewInboundRecorderUsesRealRecorderChain(t *testing.T) {
+	runtimeStore = newRuntimeStore()
 	recorder := newInboundRecorder()
 
-	_, err := recorder.Record(context.Background(), core.StoredInboundMessage{
+	result, err := recorder.Record(context.Background(), core.StoredInboundMessage{
 		Receipt: core.InboundReceipt{
-			OrganizationID: "org-123",
-			InboxID:        "inbox-123",
+			OrganizationID: "org-local",
+			InboxID:        "inbox-local",
 			ReceivedAt:     time.Date(2026, 4, 3, 17, 5, 0, 0, time.UTC),
 		},
 	}, inbound.ProcessResult{
-		Contact: domain.Contact{ID: "contact-123"},
-		Thread:  domain.Thread{ID: "thread-123"},
+		Contact: domain.Contact{ID: "contact-123", EmailAddress: "sender@example.com"},
+		Thread: domain.Thread{
+			ID:    "thread-123",
+			State: domain.ThreadStateActive,
+		},
 	})
-	if err == nil {
-		t.Fatal("expected placeholder inbound repositories to fail")
+	if err != nil {
+		t.Fatalf("expected runtime store-backed inbound recorder to succeed, got error: %v", err)
+	}
+
+	if result.Message.ThreadID != "thread-123" {
+		t.Fatalf("expected recorded inbound message, got %#v", result.Message)
 	}
 }
 
 func TestNewThreadReadServiceUsesApplicationService(t *testing.T) {
+	runtimeStore = newRuntimeStore()
+	_, err := runtimeStore.Save(context.Background(), domain.Thread{
+		ID:             "thread-read-123",
+		OrganizationID: "org-local",
+		State:          domain.ThreadStateActive,
+	})
+	if err != nil {
+		t.Fatalf("expected thread seed to succeed, got error: %v", err)
+	}
+
 	service := newThreadReadService()
 
-	_, err := service.GetThread(context.Background(), "thread-123")
-	if err == nil {
-		t.Fatal("expected placeholder thread repository to fail")
+	thread, err := service.GetThread(context.Background(), "thread-read-123")
+	if err != nil {
+		t.Fatalf("expected runtime store-backed thread read to succeed, got error: %v", err)
+	}
+
+	if thread.ID != "thread-read-123" {
+		t.Fatalf("expected returned thread, got %#v", thread)
 	}
 }
 
 func TestNewContactReadServiceUsesApplicationService(t *testing.T) {
+	runtimeStore = newRuntimeStore()
+	_, err := runtimeStore.UpsertByEmail(context.Background(), domain.Contact{
+		ID:           "contact-read-123",
+		EmailAddress: "reader@example.com",
+	})
+	if err != nil {
+		t.Fatalf("expected contact seed to succeed, got error: %v", err)
+	}
+
 	service := newContactReadService()
 
-	_, err := service.GetContact(context.Background(), "contact-123")
-	if err == nil {
-		t.Fatal("expected placeholder contact repository to fail")
+	contact, err := service.GetContact(context.Background(), "contact-read-123")
+	if err != nil {
+		t.Fatalf("expected runtime store-backed contact read to succeed, got error: %v", err)
+	}
+
+	if contact.ID != "contact-read-123" {
+		t.Fatalf("expected returned contact, got %#v", contact)
 	}
 }
 
 func TestNewThreadEscalationServiceUsesApplicationService(t *testing.T) {
+	runtimeStore = newRuntimeStore()
 	service := newThreadEscalationService()
 
-	_, err := service.EscalateThread(context.Background(), "thread-123", "needs human review")
-	if err == nil {
-		t.Fatal("expected placeholder thread save repository to fail")
+	thread, err := service.EscalateThread(context.Background(), "thread-escalate-123", "needs human review")
+	if err != nil {
+		t.Fatalf("expected runtime store-backed escalation to succeed, got error: %v", err)
+	}
+
+	if thread.State != domain.ThreadStateEscalated {
+		t.Fatalf("expected escalated thread, got %#v", thread)
 	}
 }
 
 func TestNewContactMemoryServiceUsesApplicationService(t *testing.T) {
+	runtimeStore = newRuntimeStore()
 	service := newContactMemoryService()
 
-	_, err := service.CreateContactMemory(context.Background(), "contact-123", api.CreateContactMemoryInput{
+	entry, err := service.CreateContactMemory(context.Background(), "contact-123", api.CreateContactMemoryInput{
 		ThreadID: "thread-123",
 		Note:     "Prefers email follow-up.",
 		Tags:     []string{"preference"},
 	})
-	if err == nil {
-		t.Fatal("expected placeholder contact memory repository to fail")
+	if err != nil {
+		t.Fatalf("expected runtime store-backed contact memory write to succeed, got error: %v", err)
+	}
+
+	if entry.ID == "" {
+		t.Fatalf("expected created memory entry, got %#v", entry)
 	}
 }
 
 func TestNewReplyServiceUsesRealOutboundComposition(t *testing.T) {
+	runtimeStore = newRuntimeStore()
 	service := newReplyService()
 
 	_, err := service.SendReply(context.Background(), outbound.SendReplyInput{
@@ -271,6 +327,7 @@ func TestNewReplyServiceUsesRealOutboundComposition(t *testing.T) {
 }
 
 func TestNewOutboundCallbackFlowUsesRealCallbackComposition(t *testing.T) {
+	runtimeStore = newRuntimeStore()
 	flow := newOutboundCallbackFlow()
 
 	_, err := flow.Apply(context.Background(), outbound.CallbackFlowInput{
