@@ -403,7 +403,7 @@ func TestNewWebhookDeliveryListServiceUsesApplicationService(t *testing.T) {
 		UpdatedAt: time.Date(2026, 4, 3, 11, 0, 0, 0, time.UTC),
 	})
 
-	deliveries, err := newWebhookDeliveryListService().ListWebhookDeliveries(context.Background())
+	deliveries, err := newWebhookDeliveryListService().ListWebhookDeliveries(context.Background(), 0)
 	if err != nil {
 		t.Fatalf("expected webhook delivery list to succeed, got error: %v", err)
 	}

@@ -502,8 +502,8 @@ func (a bootstrapReadServiceAdapter) GetBootstrap(ctx context.Context) (api.Boot
 	}, nil
 }
 
-func (a webhookDeliveryListServiceAdapter) ListWebhookDeliveries(ctx context.Context) ([]domain.WebhookDelivery, error) {
-	return a.service.ListWebhookDeliveries(ctx)
+func (a webhookDeliveryListServiceAdapter) ListWebhookDeliveries(ctx context.Context, limit int) ([]domain.WebhookDelivery, error) {
+	return a.service.ListWebhookDeliveries(ctx, limit)
 }
 
 func (a webhookDeliveryReadServiceAdapter) GetWebhookDelivery(ctx context.Context, deliveryID string) (domain.WebhookDelivery, error) {

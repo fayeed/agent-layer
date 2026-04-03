@@ -63,6 +63,7 @@ Inspect webhook delivery activity:
 
 ```bash
 curl http://localhost:8080/webhooks/deliveries
+curl 'http://localhost:8080/webhooks/deliveries?limit=5'
 curl http://localhost:8080/webhooks/deliveries/<delivery-id>
 ```
 

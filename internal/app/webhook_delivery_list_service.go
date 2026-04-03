@@ -25,6 +25,9 @@ func NewWebhookDeliveryListService(deliveries WebhookDeliveryLister, limit int) 
 	}
 }
 
-func (s WebhookDeliveryListService) ListWebhookDeliveries(ctx context.Context) ([]domain.WebhookDelivery, error) {
-	return s.deliveries.ListWebhookDeliveries(ctx, s.limit)
+func (s WebhookDeliveryListService) ListWebhookDeliveries(ctx context.Context, limit int) ([]domain.WebhookDelivery, error) {
+	if limit <= 0 {
+		limit = s.limit
+	}
+	return s.deliveries.ListWebhookDeliveries(ctx, limit)
 }

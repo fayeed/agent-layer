@@ -16,7 +16,7 @@ func TestWebhookDeliveryListServiceLoadsRecentDeliveries(t *testing.T) {
 	}
 
 	service := NewWebhookDeliveryListService(store, 10)
-	deliveries, err := service.ListWebhookDeliveries(context.Background())
+	deliveries, err := service.ListWebhookDeliveries(context.Background(), 0)
 	if err != nil {
 		t.Fatalf("expected webhook delivery list to succeed, got error: %v", err)
 	}
@@ -27,6 +27,20 @@ func TestWebhookDeliveryListServiceLoadsRecentDeliveries(t *testing.T) {
 
 	if store.limit != 10 {
 		t.Fatalf("expected configured limit to be passed through, got %d", store.limit)
+	}
+}
+
+func TestWebhookDeliveryListServiceUsesExplicitLimitOverride(t *testing.T) {
+	store := &webhookDeliveryListerStub{}
+	service := NewWebhookDeliveryListService(store, 20)
+
+	_, err := service.ListWebhookDeliveries(context.Background(), 5)
+	if err != nil {
+		t.Fatalf("expected webhook delivery list to succeed, got error: %v", err)
+	}
+
+	if store.limit != 5 {
+		t.Fatalf("expected explicit limit override to be passed through, got %d", store.limit)
 	}
 }
 
