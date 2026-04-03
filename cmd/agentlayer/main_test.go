@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -417,67 +418,13 @@ func TestNewWebhookDeliveryListServiceUsesApplicationService(t *testing.T) {
 
 func TestBootstrapAndInboundFlowPersistWebhookDelivery(t *testing.T) {
 	runtimeStore = newRuntimeStore()
-
-	type receivedWebhook struct {
-		Headers http.Header
-		Body    []byte
-	}
-
-	receivedCh := make(chan receivedWebhook, 1)
-	webhookServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		body := make([]byte, request.ContentLength)
-		_, _ = request.Body.Read(body)
-		receivedCh <- receivedWebhook{
-			Headers: request.Header.Clone(),
-			Body:    bytes.Trim(body, "\x00"),
-		}
-		writer.WriteHeader(http.StatusAccepted)
-		_, _ = writer.Write([]byte(`{"ok":true}`))
-	}))
+	receivedCh, webhookServer := newWebhookCaptureServer()
 	defer webhookServer.Close()
 
 	server := newServer()
-	bootstrapRequest := httptest.NewRequest(http.MethodPost, "/bootstrap", bytes.NewBufferString(`{
-		"organization_name":"Acme Support",
-		"agent_name":"Acme Agent",
-		"agent_status":"active",
-		"webhook_url":"`+webhookServer.URL+`",
-		"webhook_secret":"dev-secret",
-		"inbox_address":"agent@localhost",
-		"inbox_domain":"localhost",
-		"inbox_display_name":"Acme Inbox"
-	}`))
-	bootstrapRecorder := httptest.NewRecorder()
-	server.ServeHTTP(bootstrapRecorder, bootstrapRequest)
+	bootstrapLocalRuntime(t, server, webhookServer.URL, "active")
 
-	if bootstrapRecorder.Code != http.StatusCreated {
-		t.Fatalf("expected bootstrap to succeed, got %d", bootstrapRecorder.Code)
-	}
-
-	raw := "From: Sender Example <sender@example.com>\r\n" +
-		"To: Acme Inbox <agent@localhost>\r\n" +
-		"Subject: Hello World\r\n" +
-		"Message-ID: <message-123@example.com>\r\n" +
-		"MIME-Version: 1.0\r\n" +
-		"Content-Type: text/plain; charset=utf-8\r\n" +
-		"\r\n" +
-		"Plain body.\r\n"
-
-	if err := runtimeStore.Put(context.Background(), "raw/integration-message.eml", []byte(raw)); err != nil {
-		t.Fatalf("expected raw message seed to succeed, got error: %v", err)
-	}
-
-	result, err := newInboundService().HandleStoredMessage(context.Background(), core.StoredInboundMessage{
-		Receipt: core.InboundReceipt{
-			OrganizationID:      "org-local",
-			AgentID:             "agent-local",
-			InboxID:             "inbox-local",
-			EnvelopeSender:      "sender@example.com",
-			EnvelopeRecipients:  []string{"agent@localhost"},
-			RawMessageObjectKey: "raw/integration-message.eml",
-			ReceivedAt:          time.Date(2026, 4, 3, 23, 0, 0, 0, time.UTC),
-		},
-	})
+	result, err := handleTestInboundMessage(t, "raw/integration-message.eml")
 	if err != nil {
 		t.Fatalf("expected inbound runtime flow to succeed, got error: %v", err)
 	}
@@ -486,7 +433,7 @@ func TestBootstrapAndInboundFlowPersistWebhookDelivery(t *testing.T) {
 		t.Fatalf("expected handled inbound result to persist message and thread, got %#v", result)
 	}
 
-	received := <-receivedCh
+	received := waitForWebhook(t, receivedCh)
 	if received.Headers.Get("X-AgentLayer-Signature") == "" {
 		t.Fatalf("expected signed webhook headers, got %#v", received.Headers)
 	}
@@ -533,6 +480,133 @@ func TestBootstrapAndInboundFlowPersistWebhookDelivery(t *testing.T) {
 
 	if len(response) != 1 {
 		t.Fatalf("expected one webhook delivery from admin endpoint, got %#v", response)
+	}
+}
+
+func TestBootstrapAndInboundFlowSkipsWebhookWhenAgentPaused(t *testing.T) {
+	runtimeStore = newRuntimeStore()
+	receivedCh, webhookServer := newWebhookCaptureServer()
+	defer webhookServer.Close()
+
+	server := newServer()
+	bootstrapLocalRuntime(t, server, webhookServer.URL, "paused")
+
+	if _, err := handleTestInboundMessage(t, "raw/paused-message.eml"); err != nil {
+		t.Fatalf("expected paused-agent inbound flow to succeed, got error: %v", err)
+	}
+
+	select {
+	case received := <-receivedCh:
+		t.Fatalf("expected paused agent to skip webhook delivery, got %#v", received)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	deliveries, err := runtimeStore.ListWebhookDeliveries(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("expected webhook delivery list to succeed, got error: %v", err)
+	}
+
+	if len(deliveries) != 0 {
+		t.Fatalf("expected paused agent to persist no webhook deliveries, got %#v", deliveries)
+	}
+}
+
+func TestWebhookReplayFlowReplaysStoredDelivery(t *testing.T) {
+	runtimeStore = newRuntimeStore()
+	receivedCh, webhookServer := newWebhookCaptureServer()
+	defer webhookServer.Close()
+
+	server := newServer()
+	bootstrapLocalRuntime(t, server, webhookServer.URL, "active")
+
+	if _, err := handleTestInboundMessage(t, "raw/replay-message.eml"); err != nil {
+		t.Fatalf("expected inbound runtime flow to succeed, got error: %v", err)
+	}
+
+	first := waitForWebhook(t, receivedCh)
+	if first.Headers.Get("X-AgentLayer-Signature") == "" {
+		t.Fatalf("expected initial webhook delivery to be signed, got %#v", first.Headers)
+	}
+
+	deliveries, err := runtimeStore.ListWebhookDeliveries(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("expected webhook delivery list to succeed, got error: %v", err)
+	}
+
+	if len(deliveries) != 1 {
+		t.Fatalf("expected one stored webhook delivery, got %#v", deliveries)
+	}
+
+	replayRequest := httptest.NewRequest(http.MethodPost, "/webhooks/deliveries/"+deliveries[0].ID+"/replay", nil)
+	replayRecorder := httptest.NewRecorder()
+	server.ServeHTTP(replayRecorder, replayRequest)
+
+	if replayRecorder.Code != http.StatusAccepted {
+		t.Fatalf("expected replay endpoint to succeed, got %d", replayRecorder.Code)
+	}
+
+	second := waitForWebhook(t, receivedCh)
+	if second.Headers.Get("X-AgentLayer-Signature") == "" {
+		t.Fatalf("expected replayed webhook delivery to be signed, got %#v", second.Headers)
+	}
+
+	updated, err := runtimeStore.GetWebhookDeliveryByID(context.Background(), deliveries[0].ID)
+	if err != nil {
+		t.Fatalf("expected stored webhook delivery lookup to succeed, got error: %v", err)
+	}
+
+	if updated.AttemptCount != 2 || updated.Status != "succeeded" {
+		t.Fatalf("expected replay to update attempt count, got %#v", updated)
+	}
+
+	showRequest := httptest.NewRequest(http.MethodGet, "/webhooks/deliveries/"+updated.ID, nil)
+	showRecorder := httptest.NewRecorder()
+	server.ServeHTTP(showRecorder, showRequest)
+
+	if showRecorder.Code != http.StatusOK {
+		t.Fatalf("expected webhook delivery read endpoint to succeed, got %d", showRecorder.Code)
+	}
+
+	var response map[string]any
+	if err := json.Unmarshal(showRecorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("expected webhook delivery read json, got error: %v", err)
+	}
+
+	if got, ok := response["attempt_count"].(float64); !ok || got != 2 {
+		t.Fatalf("expected replayed attempt count in response, got %#v", response)
+	}
+}
+
+func TestWebhookDeliveryListEndpointHonorsLimitIntegration(t *testing.T) {
+	runtimeStore = newRuntimeStore()
+	server := newServer()
+
+	_, _ = runtimeStore.SaveWebhookDelivery(context.Background(), domain.WebhookDelivery{
+		ID:        "delivery-older",
+		EventID:   "event-older",
+		UpdatedAt: time.Date(2026, 4, 3, 10, 0, 0, 0, time.UTC),
+	})
+	_, _ = runtimeStore.SaveWebhookDelivery(context.Background(), domain.WebhookDelivery{
+		ID:        "delivery-newer",
+		EventID:   "event-newer",
+		UpdatedAt: time.Date(2026, 4, 3, 11, 0, 0, 0, time.UTC),
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/webhooks/deliveries?limit=1", nil)
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected webhook delivery list endpoint to succeed, got %d", recorder.Code)
+	}
+
+	var response []map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("expected webhook delivery list json, got error: %v", err)
+	}
+
+	if len(response) != 1 || response[0]["id"] != "delivery-newer" {
+		t.Fatalf("expected limited recency-ordered response, got %#v", response)
 	}
 }
 
@@ -628,6 +702,87 @@ func TestRunServersReturnsFirstServerError(t *testing.T) {
 	err := runServers(httpServer, smtpServer)
 	if !errors.Is(err, want) {
 		t.Fatalf("expected first error %v, got %v", want, err)
+	}
+}
+
+type receivedWebhook struct {
+	Headers http.Header
+	Body    []byte
+}
+
+func newWebhookCaptureServer() (chan receivedWebhook, *httptest.Server) {
+	receivedCh := make(chan receivedWebhook, 4)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, _ := io.ReadAll(request.Body)
+		receivedCh <- receivedWebhook{
+			Headers: request.Header.Clone(),
+			Body:    body,
+		}
+		writer.WriteHeader(http.StatusAccepted)
+		_, _ = writer.Write([]byte(`{"ok":true}`))
+	}))
+	return receivedCh, server
+}
+
+func bootstrapLocalRuntime(t *testing.T, server http.Handler, webhookURL, status string) {
+	t.Helper()
+
+	request := httptest.NewRequest(http.MethodPost, "/bootstrap", bytes.NewBufferString(`{
+		"organization_name":"Acme Support",
+		"agent_name":"Acme Agent",
+		"agent_status":"`+status+`",
+		"webhook_url":"`+webhookURL+`",
+		"webhook_secret":"dev-secret",
+		"inbox_address":"agent@localhost",
+		"inbox_domain":"localhost",
+		"inbox_display_name":"Acme Inbox"
+	}`))
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("expected bootstrap to succeed, got %d", recorder.Code)
+	}
+}
+
+func handleTestInboundMessage(t *testing.T, objectKey string) (inbound.HandleResult, error) {
+	t.Helper()
+
+	raw := "From: Sender Example <sender@example.com>\r\n" +
+		"To: Acme Inbox <agent@localhost>\r\n" +
+		"Subject: Hello World\r\n" +
+		"Message-ID: <message-123@example.com>\r\n" +
+		"MIME-Version: 1.0\r\n" +
+		"Content-Type: text/plain; charset=utf-8\r\n" +
+		"\r\n" +
+		"Plain body.\r\n"
+
+	if err := runtimeStore.Put(context.Background(), objectKey, []byte(raw)); err != nil {
+		t.Fatalf("expected raw message seed to succeed, got error: %v", err)
+	}
+
+	return newInboundService().HandleStoredMessage(context.Background(), core.StoredInboundMessage{
+		Receipt: core.InboundReceipt{
+			OrganizationID:      "org-local",
+			AgentID:             "agent-local",
+			InboxID:             "inbox-local",
+			EnvelopeSender:      "sender@example.com",
+			EnvelopeRecipients:  []string{"agent@localhost"},
+			RawMessageObjectKey: objectKey,
+			ReceivedAt:          time.Date(2026, 4, 3, 23, 0, 0, 0, time.UTC),
+		},
+	})
+}
+
+func waitForWebhook(t *testing.T, receivedCh <-chan receivedWebhook) receivedWebhook {
+	t.Helper()
+
+	select {
+	case received := <-receivedCh:
+		return received
+	case <-time.After(1 * time.Second):
+		t.Fatal("expected webhook delivery to be received")
+		return receivedWebhook{}
 	}
 }
 
