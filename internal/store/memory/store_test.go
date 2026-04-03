@@ -37,6 +37,56 @@ func TestStoreSupportsSeededInboxAndRawMessageAccess(t *testing.T) {
 	}
 }
 
+func TestStoreSupportsBootstrapConfigState(t *testing.T) {
+	store := NewStore()
+
+	organization, err := store.SaveOrganization(context.Background(), domain.Organization{
+		ID:   "org-local",
+		Name: "AgentLayer Local",
+	})
+	if err != nil {
+		t.Fatalf("expected organization save to succeed, got error: %v", err)
+	}
+
+	agent, err := store.SaveAgent(context.Background(), domain.Agent{
+		ID:             "agent-local",
+		OrganizationID: "org-local",
+		Name:           "Local Agent",
+	})
+	if err != nil {
+		t.Fatalf("expected agent save to succeed, got error: %v", err)
+	}
+
+	inbox, err := store.SaveInbox(context.Background(), domain.Inbox{
+		ID:             "inbox-local",
+		OrganizationID: "org-local",
+		AgentID:        "agent-local",
+		EmailAddress:   "agent@example.com",
+	})
+	if err != nil {
+		t.Fatalf("expected inbox save to succeed, got error: %v", err)
+	}
+
+	if organization.ID != "org-local" || agent.ID != "agent-local" || inbox.ID != "inbox-local" {
+		t.Fatalf("expected saved bootstrap config, got org=%#v agent=%#v inbox=%#v", organization, agent, inbox)
+	}
+
+	gotOrg, err := store.GetOrganizationByID(context.Background(), "org-local")
+	if err != nil || gotOrg.Name != "AgentLayer Local" {
+		t.Fatalf("expected organization get to succeed, got org=%#v err=%v", gotOrg, err)
+	}
+
+	gotAgent, err := store.GetAgentByID(context.Background(), "agent-local")
+	if err != nil || gotAgent.OrganizationID != "org-local" {
+		t.Fatalf("expected agent get to succeed, got agent=%#v err=%v", gotAgent, err)
+	}
+
+	gotInbox, err := store.GetInboxByID(context.Background(), "inbox-local")
+	if err != nil || gotInbox.EmailAddress != "agent@example.com" {
+		t.Fatalf("expected inbox get to succeed, got inbox=%#v err=%v", gotInbox, err)
+	}
+}
+
 func TestStoreSupportsThreadContactAndMessageState(t *testing.T) {
 	store := NewStore()
 

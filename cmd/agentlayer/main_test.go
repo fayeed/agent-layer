@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/agentlayer/agentlayer/internal/api"
+	"github.com/agentlayer/agentlayer/internal/app"
 	"github.com/agentlayer/agentlayer/internal/core"
 	"github.com/agentlayer/agentlayer/internal/domain"
 	"github.com/agentlayer/agentlayer/internal/inbound"
@@ -41,6 +42,7 @@ func TestNewServerRegistersV0RouteShapes(t *testing.T) {
 		method string
 		path   string
 	}{
+		{method: http.MethodPost, path: "/bootstrap"},
 		{method: http.MethodPost, path: "/threads/thread-123/reply"},
 		{method: http.MethodPost, path: "/threads/thread-123/escalate"},
 		{method: http.MethodGet, path: "/threads/thread-123"},
@@ -98,6 +100,7 @@ func TestNewServerWiresRemainingHandlers(t *testing.T) {
 		body   string
 		want   int
 	}{
+		{method: http.MethodPost, path: "/bootstrap", body: "{}", want: http.StatusCreated},
 		{method: http.MethodPost, path: "/threads/thread-123/reply", body: "{}", want: http.StatusInternalServerError},
 		{method: http.MethodPost, path: "/threads/thread-123/escalate", body: "{}", want: http.StatusAccepted},
 		{method: http.MethodGet, path: "/threads/thread-123/messages", want: http.StatusOK},
@@ -291,6 +294,38 @@ func TestNewContactMemoryServiceUsesApplicationService(t *testing.T) {
 
 	if entry.ID == "" {
 		t.Fatalf("expected created memory entry, got %#v", entry)
+	}
+}
+
+func TestNewBootstrapServiceUsesApplicationService(t *testing.T) {
+	runtimeStore = newRuntimeStore()
+	service := newBootstrapService()
+
+	result, err := service.BootstrapLocal(context.Background(), app.BootstrapInput{
+		OrganizationName: "Acme Support",
+		AgentName:        "Acme Agent",
+		AgentStatus:      domain.AgentStatusPaused,
+		WebhookURL:       "https://example.com/webhook",
+		WebhookSecret:    "super-secret",
+		InboxAddress:     "agent@example.com",
+		InboxDomain:      "example.com",
+		InboxDisplayName: "Acme Inbox",
+	})
+	if err != nil {
+		t.Fatalf("expected runtime store-backed bootstrap to succeed, got error: %v", err)
+	}
+
+	if result.Agent.WebhookURL != "https://example.com/webhook" {
+		t.Fatalf("expected webhook url to be persisted, got %#v", result.Agent)
+	}
+
+	inbox, err := runtimeStore.GetInboxByID(context.Background(), "inbox-local")
+	if err != nil {
+		t.Fatalf("expected persisted inbox lookup to succeed, got error: %v", err)
+	}
+
+	if inbox.EmailAddress != "agent@example.com" {
+		t.Fatalf("expected bootstrapped inbox address, got %#v", inbox)
 	}
 }
 

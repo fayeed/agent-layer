@@ -12,12 +12,16 @@ var (
 	ErrThreadNotFound  = errors.New("thread not found")
 	ErrContactNotFound = errors.New("contact not found")
 	ErrMessageNotFound = errors.New("message not found")
+	ErrConfigNotFound  = errors.New("config not found")
 )
 
 type Store struct {
 	mu sync.RWMutex
 
+	organizationsByID     map[string]domain.Organization
+	agentsByID            map[string]domain.Agent
 	rawMessages           map[string][]byte
+	inboxesByID           map[string]domain.Inbox
 	inboxesByEmail        map[string]domain.Inbox
 	contactsByID          map[string]domain.Contact
 	contactsByEmail       map[string]domain.Contact
@@ -33,7 +37,10 @@ type Store struct {
 
 func NewStore() *Store {
 	return &Store{
+		organizationsByID:     make(map[string]domain.Organization),
+		agentsByID:            make(map[string]domain.Agent),
 		rawMessages:           make(map[string][]byte),
+		inboxesByID:           make(map[string]domain.Inbox),
 		inboxesByEmail:        make(map[string]domain.Inbox),
 		contactsByID:          make(map[string]domain.Contact),
 		contactsByEmail:       make(map[string]domain.Contact),
@@ -51,7 +58,60 @@ func NewStore() *Store {
 func (s *Store) SeedInbox(inbox domain.Inbox) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.inboxesByID[inbox.ID] = inbox
 	s.inboxesByEmail[inbox.EmailAddress] = inbox
+}
+
+func (s *Store) SaveOrganization(_ context.Context, organization domain.Organization) (domain.Organization, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.organizationsByID[organization.ID] = organization
+	return organization, nil
+}
+
+func (s *Store) GetOrganizationByID(_ context.Context, organizationID string) (domain.Organization, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	organization, ok := s.organizationsByID[organizationID]
+	if !ok {
+		return domain.Organization{}, ErrConfigNotFound
+	}
+	return organization, nil
+}
+
+func (s *Store) SaveAgent(_ context.Context, agent domain.Agent) (domain.Agent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.agentsByID[agent.ID] = agent
+	return agent, nil
+}
+
+func (s *Store) GetAgentByID(_ context.Context, agentID string) (domain.Agent, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	agent, ok := s.agentsByID[agentID]
+	if !ok {
+		return domain.Agent{}, ErrConfigNotFound
+	}
+	return agent, nil
+}
+
+func (s *Store) SaveInbox(_ context.Context, inbox domain.Inbox) (domain.Inbox, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.inboxesByID[inbox.ID] = inbox
+	s.inboxesByEmail[inbox.EmailAddress] = inbox
+	return inbox, nil
+}
+
+func (s *Store) GetInboxByID(_ context.Context, inboxID string) (domain.Inbox, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	inbox, ok := s.inboxesByID[inboxID]
+	if !ok {
+		return domain.Inbox{}, ErrConfigNotFound
+	}
+	return inbox, nil
 }
 
 func (s *Store) Put(_ context.Context, objectKey string, data []byte) error {

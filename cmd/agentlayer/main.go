@@ -45,6 +45,7 @@ type serveServer interface {
 func newServer() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealth)
+	mux.Handle("POST /bootstrap", api.NewBootstrapHandler(newBootstrapHandlerService()))
 	mux.Handle("POST /threads/{threadID}/reply", api.NewReplyHandler(newReplyService()))
 	mux.Handle("POST /threads/{threadID}/escalate", api.NewThreadEscalateHandler(newThreadEscalationService()))
 	mux.Handle("GET /threads/{threadID}", api.NewThreadHandler(newThreadReadService()))
@@ -95,6 +96,16 @@ func webhookSecret() string {
 
 func newRuntimeStore() *memorystore.Store {
 	store := memorystore.NewStore()
+	_, _ = store.SaveOrganization(context.Background(), domain.Organization{
+		ID:   "org-local",
+		Name: "AgentLayer Local",
+	})
+	_, _ = store.SaveAgent(context.Background(), domain.Agent{
+		ID:             "agent-local",
+		OrganizationID: "org-local",
+		Name:           "Local Agent",
+		Status:         domain.AgentStatusActive,
+	})
 	store.SeedInbox(domain.Inbox{
 		ID:             "inbox-local",
 		OrganizationID: "org-local",
@@ -138,6 +149,9 @@ func newInboundService() smtpedge.StoredMessageHandler {
 		newInboundProcessor(),
 		newInboundRecorder(),
 	)
+	organization := currentOrganization()
+	agent := currentAgent()
+	inbox := currentInbox()
 
 	return app.NewInboundRuntimeService(
 		base,
@@ -146,27 +160,45 @@ func newInboundService() smtpedge.StoredMessageHandler {
 		newMessageReceivedDeliveryService(),
 		time.Now,
 		app.InboundRuntimeConfig{
-			Organization: domain.Organization{
-				ID:   "org-local",
-				Name: "AgentLayer Local",
-			},
-			Agent: domain.Agent{
-				ID:     "agent-local",
-				Name:   "Local Agent",
-				Status: domain.AgentStatusActive,
-			},
-			Inbox: domain.Inbox{
-				ID:           "inbox-local",
-				EmailAddress: "agent@localhost",
-				Domain:       "localhost",
-				DisplayName:  "AgentLayer Local",
-			},
-			WebhookURL:    webhookURL(),
-			WebhookSecret: webhookSecret(),
+			Organization:  organization,
+			Agent:         agent,
+			Inbox:         inbox,
+			WebhookURL:    agent.WebhookURL,
+			WebhookSecret: agent.WebhookSecret,
 			HistoryLimit:  20,
 			MemoryLimit:   10,
 		},
 	)
+}
+
+func currentOrganization() domain.Organization {
+	organization, err := runtimeStore.GetOrganizationByID(context.Background(), "org-local")
+	if err != nil {
+		return domain.Organization{ID: "org-local", Name: "AgentLayer Local"}
+	}
+	return organization
+}
+
+func currentAgent() domain.Agent {
+	agent, err := runtimeStore.GetAgentByID(context.Background(), "agent-local")
+	if err != nil {
+		return domain.Agent{ID: "agent-local", OrganizationID: "org-local", Name: "Local Agent", Status: domain.AgentStatusActive, WebhookURL: webhookURL(), WebhookSecret: webhookSecret()}
+	}
+	if agent.WebhookURL == "" {
+		agent.WebhookURL = webhookURL()
+	}
+	if agent.WebhookSecret == "" {
+		agent.WebhookSecret = webhookSecret()
+	}
+	return agent
+}
+
+func currentInbox() domain.Inbox {
+	inbox, err := runtimeStore.GetInboxByID(context.Background(), "inbox-local")
+	if err != nil {
+		return domain.Inbox{ID: "inbox-local", OrganizationID: "org-local", AgentID: "agent-local", EmailAddress: "agent@localhost", Domain: "localhost", DisplayName: "AgentLayer Local"}
+	}
+	return inbox
 }
 
 func newInboundProcessor() inbound.Processor {
@@ -195,6 +227,14 @@ func newThreadEscalationService() app.ThreadEscalationService {
 
 func newContactMemoryService() app.ContactMemoryService {
 	return app.NewContactMemoryService(contactMemoryWriterAdapter{store: runtimeStore}, time.Now)
+}
+
+func newBootstrapService() app.BootstrapService {
+	return app.NewBootstrapService(runtimeStore, runtimeStore, runtimeStore, time.Now)
+}
+
+func newBootstrapHandlerService() api.BootstrapService {
+	return bootstrapServiceAdapter{service: newBootstrapService()}
 }
 
 func newInboundRecorder() inbound.Recorder {
@@ -367,6 +407,32 @@ func (notImplementedSuppressionRepository) Save(context.Context, domain.Suppress
 }
 
 type contactGetterAdapter struct{ store *memorystore.Store }
+
+type bootstrapServiceAdapter struct{ service app.BootstrapService }
+
+func (a bootstrapServiceAdapter) BootstrapLocal(ctx context.Context, input api.BootstrapInput) (api.BootstrapResult, error) {
+	result, err := a.service.BootstrapLocal(ctx, app.BootstrapInput{
+		OrganizationName: input.OrganizationName,
+		AgentName:        input.AgentName,
+		AgentStatus:      domain.AgentStatus(input.AgentStatus),
+		WebhookURL:       input.WebhookURL,
+		WebhookSecret:    input.WebhookSecret,
+		InboxAddress:     input.InboxAddress,
+		InboxDomain:      input.InboxDomain,
+		InboxDisplayName: input.InboxDisplayName,
+	})
+	if err != nil {
+		return api.BootstrapResult{}, err
+	}
+
+	return api.BootstrapResult{
+		OrganizationID: result.Organization.ID,
+		AgentID:        result.Agent.ID,
+		InboxID:        result.Inbox.ID,
+		WebhookURL:     result.Agent.WebhookURL,
+		InboxAddress:   result.Inbox.EmailAddress,
+	}, nil
+}
 
 func (a contactGetterAdapter) GetByID(ctx context.Context, contactID string) (domain.Contact, error) {
 	return a.store.GetContactByID(ctx, contactID)
