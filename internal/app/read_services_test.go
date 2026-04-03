@@ -39,7 +39,7 @@ func TestThreadMessagesReadServiceListsMessages(t *testing.T) {
 	}
 	service := NewThreadMessagesReadService(repository, 25)
 
-	messages, err := service.ListThreadMessages(context.Background(), "thread-123")
+	messages, err := service.ListThreadMessages(context.Background(), "thread-123", 0)
 	if err != nil {
 		t.Fatalf("expected list thread messages to succeed, got error: %v", err)
 	}
@@ -54,6 +54,20 @@ func TestThreadMessagesReadServiceListsMessages(t *testing.T) {
 
 	if len(messages) != 2 {
 		t.Fatalf("expected returned messages, got %#v", messages)
+	}
+}
+
+func TestThreadMessagesReadServiceUsesExplicitLimitOverride(t *testing.T) {
+	repository := &threadMessagesRepositoryStub{}
+	service := NewThreadMessagesReadService(repository, 25)
+
+	_, err := service.ListThreadMessages(context.Background(), "thread-123", 2)
+	if err != nil {
+		t.Fatalf("expected list thread messages to succeed, got error: %v", err)
+	}
+
+	if repository.limit != 2 {
+		t.Fatalf("expected explicit message limit override, got %d", repository.limit)
 	}
 }
 

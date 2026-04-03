@@ -610,6 +610,126 @@ func TestWebhookDeliveryListEndpointHonorsLimitIntegration(t *testing.T) {
 	}
 }
 
+func TestThreadMessagesEndpointHonorsLimitIntegration(t *testing.T) {
+	runtimeStore = newRuntimeStore()
+	server := newServer()
+
+	_, _ = runtimeStore.Create(context.Background(), domain.Message{
+		ID:        "message-older",
+		ThreadID:  "thread-123",
+		Direction: domain.MessageDirectionInbound,
+		Subject:   "Older",
+	})
+	_, _ = runtimeStore.Create(context.Background(), domain.Message{
+		ID:        "message-newer",
+		ThreadID:  "thread-123",
+		Direction: domain.MessageDirectionOutbound,
+		Subject:   "Newer",
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/threads/thread-123/messages?limit=1", nil)
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected thread messages endpoint to succeed, got %d", recorder.Code)
+	}
+
+	var response []map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("expected thread messages json, got error: %v", err)
+	}
+
+	if len(response) != 1 || response[0]["id"] != "message-older" {
+		t.Fatalf("expected limited thread message response, got %#v", response)
+	}
+}
+
+func TestOutboundCallbackEndpointAppliesDeliveredStateIntegration(t *testing.T) {
+	runtimeStore = newRuntimeStore()
+	server := newServer()
+
+	_, err := runtimeStore.SaveMessage(context.Background(), domain.Message{
+		ID:                "message-123",
+		ThreadID:          "thread-123",
+		Direction:         domain.MessageDirectionOutbound,
+		ProviderMessageID: "ses-123",
+		DeliveryState:     "sent",
+	})
+	if err != nil {
+		t.Fatalf("expected outbound message seed to succeed, got error: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/provider/callbacks/outbound", bytes.NewBufferString(`{
+		"event_type":"delivered",
+		"provider_message_id":"ses-123",
+		"occurred_at":"2026-04-03T23:05:00Z",
+		"contact_email":"sender@example.com"
+	}`))
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected outbound callback endpoint to succeed, got %d", recorder.Code)
+	}
+
+	var response map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("expected outbound callback response json, got error: %v", err)
+	}
+
+	if response["delivery_state"] != "delivered" {
+		t.Fatalf("expected delivered state in callback response, got %#v", response)
+	}
+
+	message, found, err := runtimeStore.FindByProviderMessageID(context.Background(), "ses-123")
+	if err != nil || !found {
+		t.Fatalf("expected updated outbound message lookup, got found=%v err=%v", found, err)
+	}
+
+	if message.DeliveryState != "delivered" {
+		t.Fatalf("expected outbound message delivery state to be updated, got %#v", message)
+	}
+}
+
+func TestOutboundCallbackEndpointAppliesSuppressionIntegration(t *testing.T) {
+	runtimeStore = newRuntimeStore()
+	server := newServer()
+
+	_, err := runtimeStore.SaveMessage(context.Background(), domain.Message{
+		ID:                "message-123",
+		ThreadID:          "thread-123",
+		Direction:         domain.MessageDirectionOutbound,
+		ProviderMessageID: "ses-bounce-123",
+		DeliveryState:     "sent",
+	})
+	if err != nil {
+		t.Fatalf("expected outbound message seed to succeed, got error: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/provider/callbacks/outbound", bytes.NewBufferString(`{
+		"event_type":"hard_bounce",
+		"provider_message_id":"ses-bounce-123",
+		"occurred_at":"2026-04-03T23:06:00Z",
+		"contact_email":"sender@example.com"
+	}`))
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected hard bounce callback endpoint to succeed, got %d", recorder.Code)
+	}
+
+	var response map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("expected callback response json, got error: %v", err)
+	}
+
+	if response["suppressed"] != true {
+		t.Fatalf("expected suppression to be applied, got %#v", response)
+	}
+}
+
 func TestNewReplyServiceUsesRealOutboundComposition(t *testing.T) {
 	runtimeStore = newRuntimeStore()
 	service := newReplyService()

@@ -61,6 +61,39 @@ func TestThreadMessagesHandlerGetsMessagesByThreadID(t *testing.T) {
 	if response[0].ID != "message-100" || response[1].ID != "message-101" {
 		t.Fatalf("expected ordered message payloads, got %#v", response)
 	}
+
+	if service.limit != 0 {
+		t.Fatalf("expected default handler limit to pass through as zero, got %d", service.limit)
+	}
+}
+
+func TestThreadMessagesHandlerPassesLimitQuery(t *testing.T) {
+	service := &threadMessagesServiceStub{}
+	handler := NewThreadMessagesHandler(service)
+	request := httptest.NewRequest(http.MethodGet, "/threads/thread-123/messages?limit=5", nil)
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected ok status, got %d", recorder.Code)
+	}
+
+	if service.limit != 5 {
+		t.Fatalf("expected query limit to be forwarded, got %d", service.limit)
+	}
+}
+
+func TestThreadMessagesHandlerRejectsInvalidLimit(t *testing.T) {
+	handler := NewThreadMessagesHandler(&threadMessagesServiceStub{})
+	request := httptest.NewRequest(http.MethodGet, "/threads/thread-123/messages?limit=nope", nil)
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected bad request status, got %d", recorder.Code)
+	}
 }
 
 func TestThreadMessagesHandlerRejectsInvalidPath(t *testing.T) {
@@ -77,11 +110,13 @@ func TestThreadMessagesHandlerRejectsInvalidPath(t *testing.T) {
 
 type threadMessagesServiceStub struct {
 	threadID string
+	limit    int
 	messages []domain.Message
 	err      error
 }
 
-func (s *threadMessagesServiceStub) ListThreadMessages(_ context.Context, threadID string) ([]domain.Message, error) {
+func (s *threadMessagesServiceStub) ListThreadMessages(_ context.Context, threadID string, limit int) ([]domain.Message, error) {
 	s.threadID = threadID
+	s.limit = limit
 	return s.messages, s.err
 }

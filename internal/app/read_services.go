@@ -45,8 +45,11 @@ func NewThreadMessagesReadService(repository ThreadMessagesGetter, limit int) Th
 	}
 }
 
-func (s ThreadMessagesReadService) ListThreadMessages(ctx context.Context, threadID string) ([]domain.Message, error) {
-	return s.repository.ListByThreadID(ctx, threadID, s.limit)
+func (s ThreadMessagesReadService) ListThreadMessages(ctx context.Context, threadID string, limit int) ([]domain.Message, error) {
+	if limit <= 0 {
+		limit = s.limit
+	}
+	return s.repository.ListByThreadID(ctx, threadID, limit)
 }
 
 type ContactReadService struct {
