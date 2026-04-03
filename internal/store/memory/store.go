@@ -17,30 +17,34 @@ var (
 type Store struct {
 	mu sync.RWMutex
 
-	rawMessages          map[string][]byte
-	inboxesByEmail       map[string]domain.Inbox
-	contactsByID         map[string]domain.Contact
-	contactsByEmail      map[string]domain.Contact
-	threadsByID          map[string]domain.Thread
-	messagesByID         map[string]domain.Message
-	messagesByProviderID map[string]domain.Message
-	messagesByThreadID   map[string][]string
-	memoriesByID         map[string]domain.ContactMemoryEntry
-	suppressionsByID     map[string]domain.SuppressedAddress
+	rawMessages           map[string][]byte
+	inboxesByEmail        map[string]domain.Inbox
+	contactsByID          map[string]domain.Contact
+	contactsByEmail       map[string]domain.Contact
+	threadsByID           map[string]domain.Thread
+	messagesByID          map[string]domain.Message
+	messagesByProviderID  map[string]domain.Message
+	messagesByThreadID    map[string][]string
+	memoriesByID          map[string]domain.ContactMemoryEntry
+	memoriesByContactID   map[string][]string
+	suppressionsByID      map[string]domain.SuppressedAddress
+	webhookDeliveriesByID map[string]domain.WebhookDelivery
 }
 
 func NewStore() *Store {
 	return &Store{
-		rawMessages:          make(map[string][]byte),
-		inboxesByEmail:       make(map[string]domain.Inbox),
-		contactsByID:         make(map[string]domain.Contact),
-		contactsByEmail:      make(map[string]domain.Contact),
-		threadsByID:          make(map[string]domain.Thread),
-		messagesByID:         make(map[string]domain.Message),
-		messagesByProviderID: make(map[string]domain.Message),
-		messagesByThreadID:   make(map[string][]string),
-		memoriesByID:         make(map[string]domain.ContactMemoryEntry),
-		suppressionsByID:     make(map[string]domain.SuppressedAddress),
+		rawMessages:           make(map[string][]byte),
+		inboxesByEmail:        make(map[string]domain.Inbox),
+		contactsByID:          make(map[string]domain.Contact),
+		contactsByEmail:       make(map[string]domain.Contact),
+		threadsByID:           make(map[string]domain.Thread),
+		messagesByID:          make(map[string]domain.Message),
+		messagesByProviderID:  make(map[string]domain.Message),
+		messagesByThreadID:    make(map[string][]string),
+		memoriesByID:          make(map[string]domain.ContactMemoryEntry),
+		memoriesByContactID:   make(map[string][]string),
+		suppressionsByID:      make(map[string]domain.SuppressedAddress),
+		webhookDeliveriesByID: make(map[string]domain.WebhookDelivery),
 	}
 }
 
@@ -196,7 +200,24 @@ func (s *Store) CreateMemory(_ context.Context, entry domain.ContactMemoryEntry)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.memoriesByID[entry.ID] = entry
+	if entry.ContactID != "" {
+		s.memoriesByContactID[entry.ContactID] = append(s.memoriesByContactID[entry.ContactID], entry.ID)
+	}
 	return entry, nil
+}
+
+func (s *Store) ListMemoryByContactID(_ context.Context, contactID string, limit int) ([]domain.ContactMemoryEntry, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	ids := s.memoriesByContactID[contactID]
+	if limit > 0 && len(ids) > limit {
+		ids = ids[:limit]
+	}
+	out := make([]domain.ContactMemoryEntry, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, s.memoriesByID[id])
+	}
+	return out, nil
 }
 
 func (s *Store) SaveSuppression(_ context.Context, record domain.SuppressedAddress) (domain.SuppressedAddress, error) {
@@ -204,4 +225,11 @@ func (s *Store) SaveSuppression(_ context.Context, record domain.SuppressedAddre
 	defer s.mu.Unlock()
 	s.suppressionsByID[record.ID] = record
 	return record, nil
+}
+
+func (s *Store) SaveWebhookDelivery(_ context.Context, delivery domain.WebhookDelivery) (domain.WebhookDelivery, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.webhookDeliveriesByID[delivery.ID] = delivery
+	return delivery, nil
 }

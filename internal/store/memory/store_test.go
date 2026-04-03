@@ -92,3 +92,43 @@ func TestStoreSupportsThreadContactAndMessageState(t *testing.T) {
 		t.Fatalf("expected stored messages, got %#v", messages)
 	}
 }
+
+func TestStoreSupportsMemoryAndWebhookDeliveryState(t *testing.T) {
+	store := NewStore()
+
+	entry, err := store.CreateMemory(context.Background(), domain.ContactMemoryEntry{
+		ID:        "memory-123",
+		ContactID: "contact-123",
+		Note:      "Prefers email.",
+	})
+	if err != nil {
+		t.Fatalf("expected memory create to succeed, got error: %v", err)
+	}
+
+	if entry.ID != "memory-123" {
+		t.Fatalf("expected created memory entry, got %#v", entry)
+	}
+
+	memories, err := store.ListMemoryByContactID(context.Background(), "contact-123", 10)
+	if err != nil {
+		t.Fatalf("expected memory list to succeed, got error: %v", err)
+	}
+
+	if len(memories) != 1 || memories[0].ID != "memory-123" {
+		t.Fatalf("expected stored memory entries, got %#v", memories)
+	}
+
+	delivery, err := store.SaveWebhookDelivery(context.Background(), domain.WebhookDelivery{
+		ID:        "delivery-123",
+		EventID:   "event-123",
+		EventType: "message.received",
+		Status:    "succeeded",
+	})
+	if err != nil {
+		t.Fatalf("expected webhook delivery save to succeed, got error: %v", err)
+	}
+
+	if delivery.ID != "delivery-123" {
+		t.Fatalf("expected saved webhook delivery, got %#v", delivery)
+	}
+}

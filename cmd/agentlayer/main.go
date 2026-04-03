@@ -19,6 +19,7 @@ import (
 	"github.com/agentlayer/agentlayer/internal/smtpedge"
 	memorystore "github.com/agentlayer/agentlayer/internal/store/memory"
 	"github.com/agentlayer/agentlayer/internal/threading"
+	"github.com/agentlayer/agentlayer/internal/webhooks"
 	smtp "github.com/emersion/go-smtp"
 )
 
@@ -84,6 +85,14 @@ func smtpDomain() string {
 	return "localhost"
 }
 
+func webhookURL() string {
+	return os.Getenv("AGENTLAYER_WEBHOOK_URL")
+}
+
+func webhookSecret() string {
+	return os.Getenv("AGENTLAYER_WEBHOOK_SECRET")
+}
+
 func newRuntimeStore() *memorystore.Store {
 	store := memorystore.NewStore()
 	store.SeedInbox(domain.Inbox{
@@ -124,10 +133,39 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 	}
 }
 
-func newInboundService() inbound.Service {
-	return inbound.NewService(
+func newInboundService() smtpedge.StoredMessageHandler {
+	base := inbound.NewService(
 		newInboundProcessor(),
 		newInboundRecorder(),
+	)
+
+	return app.NewInboundRuntimeService(
+		base,
+		runtimeStore,
+		contactMemoryListerAdapter{store: runtimeStore},
+		newMessageReceivedDeliveryService(),
+		time.Now,
+		app.InboundRuntimeConfig{
+			Organization: domain.Organization{
+				ID:   "org-local",
+				Name: "AgentLayer Local",
+			},
+			Agent: domain.Agent{
+				ID:     "agent-local",
+				Name:   "Local Agent",
+				Status: domain.AgentStatusActive,
+			},
+			Inbox: domain.Inbox{
+				ID:           "inbox-local",
+				EmailAddress: "agent@localhost",
+				Domain:       "localhost",
+				DisplayName:  "AgentLayer Local",
+			},
+			WebhookURL:    webhookURL(),
+			WebhookSecret: webhookSecret(),
+			HistoryLimit:  20,
+			MemoryLimit:   10,
+		},
 	)
 }
 
@@ -184,6 +222,19 @@ func newOutboundCallbackFlow() outbound.CallbackFlow {
 			outbound.NewDeliveryRecorder(messageStatusRepositoryAdapter{store: runtimeStore}),
 		),
 		outbound.NewSuppressionService(suppressionRepositoryAdapter{store: runtimeStore}),
+	)
+}
+
+func newMessageReceivedDeliveryService() webhooks.DeliveryService {
+	dispatcher := webhooks.NewDispatcher(&http.Client{Timeout: 5 * time.Second}, time.Now)
+	base := webhooks.NewService(
+		webhooks.NewMessageReceivedBuilder(),
+		webhooks.NewSigner(time.Now),
+		dispatcher,
+	)
+	return webhooks.NewDeliveryService(
+		base,
+		webhooks.NewRecorder(webhookDeliveryRepositoryAdapter{store: runtimeStore}),
 	)
 }
 
@@ -327,6 +378,12 @@ func (a contactMemoryWriterAdapter) Create(ctx context.Context, entry domain.Con
 	return a.store.CreateMemory(ctx, entry)
 }
 
+type contactMemoryListerAdapter struct{ store *memorystore.Store }
+
+func (a contactMemoryListerAdapter) ListMemoryByContactID(ctx context.Context, contactID string, limit int) ([]domain.ContactMemoryEntry, error) {
+	return a.store.ListMemoryByContactID(ctx, contactID, limit)
+}
+
 type messageStatusRepositoryAdapter struct{ store *memorystore.Store }
 
 func (a messageStatusRepositoryAdapter) Save(ctx context.Context, message domain.Message) (domain.Message, error) {
@@ -337,4 +394,10 @@ type suppressionRepositoryAdapter struct{ store *memorystore.Store }
 
 func (a suppressionRepositoryAdapter) Save(ctx context.Context, record domain.SuppressedAddress) (domain.SuppressedAddress, error) {
 	return a.store.SaveSuppression(ctx, record)
+}
+
+type webhookDeliveryRepositoryAdapter struct{ store *memorystore.Store }
+
+func (a webhookDeliveryRepositoryAdapter) Save(ctx context.Context, delivery domain.WebhookDelivery) (domain.WebhookDelivery, error) {
+	return a.store.SaveWebhookDelivery(ctx, delivery)
 }
