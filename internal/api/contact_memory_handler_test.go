@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -69,6 +70,33 @@ func TestContactMemoryHandlerRejectsInvalidPayload(t *testing.T) {
 
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected bad request status, got %d", recorder.Code)
+	}
+}
+
+func TestContactMemoryHandlerReturnsNotFoundForMissingContact(t *testing.T) {
+	handler := NewContactMemoryHandler(&contactMemoryServiceStub{err: domain.ErrNotFound})
+	request := httptest.NewRequest(http.MethodPost, "/contacts/contact-123/memory", bytes.NewBufferString(`{
+		"thread_id":"thread-123",
+		"note":"Prefers email follow-up."
+	}`))
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected not found status, got %d", recorder.Code)
+	}
+
+	handler = NewContactMemoryHandler(&contactMemoryServiceStub{err: errors.New("boom")})
+	request = httptest.NewRequest(http.MethodPost, "/contacts/contact-123/memory", bytes.NewBufferString(`{
+		"thread_id":"thread-123",
+		"note":"Prefers email follow-up."
+	}`))
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected internal error status, got %d", recorder.Code)
 	}
 }
 

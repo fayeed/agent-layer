@@ -51,11 +51,11 @@ func newServer() http.Handler {
 	mux.Handle("GET /webhooks/deliveries/{deliveryID}", api.NewWebhookDeliveryHandler(newWebhookDeliveryHandlerService()))
 	mux.Handle("POST /webhooks/deliveries/{deliveryID}/replay", api.NewWebhookReplayHandler(newWebhookReplayHandlerService()))
 	mux.Handle("POST /threads/{threadID}/reply", api.NewReplyHandler(newReplyHandlerService()))
-	mux.Handle("POST /threads/{threadID}/escalate", api.NewThreadEscalateHandler(newThreadEscalationService()))
+	mux.Handle("POST /threads/{threadID}/escalate", api.NewThreadEscalateHandler(newThreadEscalationHandlerService()))
 	mux.Handle("GET /threads/{threadID}", api.NewThreadHandler(newThreadReadService()))
 	mux.Handle("GET /threads/{threadID}/messages", api.NewThreadMessagesHandler(newThreadMessagesReadService()))
 	mux.Handle("GET /contacts/{contactID}", api.NewContactHandler(newContactReadService()))
-	mux.Handle("POST /contacts/{contactID}/memory", api.NewContactMemoryHandler(newContactMemoryService()))
+	mux.Handle("POST /contacts/{contactID}/memory", api.NewContactMemoryHandler(newContactMemoryHandlerService()))
 	mux.Handle("POST /provider/callbacks/outbound", api.NewOutboundCallbackHandler(outbound.NewCallbackParser(), newOutboundCallbackFlow()))
 	return mux
 }
@@ -229,8 +229,23 @@ func newThreadEscalationService() app.ThreadEscalationService {
 	return app.NewThreadEscalationService(runtimeStore, time.Now)
 }
 
+func newThreadEscalationHandlerService() api.ThreadEscalationService {
+	return threadEscalationServiceAdapter{
+		service: newThreadEscalationService(),
+		threads: runtimeStore,
+	}
+}
+
 func newContactMemoryService() app.ContactMemoryService {
 	return app.NewContactMemoryService(contactMemoryWriterAdapter{store: runtimeStore}, time.Now)
+}
+
+func newContactMemoryHandlerService() api.ContactMemoryService {
+	return contactMemoryServiceAdapter{
+		service:  newContactMemoryService(),
+		contacts: contactGetterAdapter{store: runtimeStore},
+		threads:  runtimeStore,
+	}
 }
 
 func newBootstrapService() app.BootstrapService {
@@ -475,6 +490,17 @@ type replyServiceAdapter struct {
 	messages messageGetter
 }
 
+type threadEscalationServiceAdapter struct {
+	service app.ThreadEscalationService
+	threads threadGetter
+}
+
+type contactMemoryServiceAdapter struct {
+	service  app.ContactMemoryService
+	contacts contactGetter
+	threads  threadGetter
+}
+
 type webhookDeliveryListServiceAdapter struct {
 	service app.WebhookDeliveryListService
 }
@@ -582,6 +608,25 @@ func (a replyServiceAdapter) SendReply(ctx context.Context, input outbound.SendR
 		BodyText:       input.BodyText,
 		ObjectKey:      input.ObjectKey,
 	})
+}
+
+func (a threadEscalationServiceAdapter) EscalateThread(ctx context.Context, threadID, reason string) (domain.Thread, error) {
+	if _, err := a.threads.GetByID(ctx, threadID); err != nil {
+		return domain.Thread{}, err
+	}
+	return a.service.EscalateThread(ctx, threadID, reason)
+}
+
+func (a contactMemoryServiceAdapter) CreateContactMemory(ctx context.Context, contactID string, input api.CreateContactMemoryInput) (domain.ContactMemoryEntry, error) {
+	if _, err := a.contacts.GetByID(ctx, contactID); err != nil {
+		return domain.ContactMemoryEntry{}, err
+	}
+	if input.ThreadID != "" {
+		if _, err := a.threads.GetByID(ctx, input.ThreadID); err != nil {
+			return domain.ContactMemoryEntry{}, err
+		}
+	}
+	return a.service.CreateContactMemory(ctx, contactID, input)
 }
 
 func (a webhookDeliveryListServiceAdapter) ListWebhookDeliveries(ctx context.Context, limit int) ([]domain.WebhookDelivery, error) {

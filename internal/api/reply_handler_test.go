@@ -86,6 +86,28 @@ func TestReplyHandlerRejectsInvalidPayload(t *testing.T) {
 	}
 }
 
+func TestReplyHandlerRequiresReplyContextFields(t *testing.T) {
+	handler := NewReplyHandler(&replyServiceStub{})
+
+	tests := []struct {
+		body string
+	}{
+		{body: `{"body_text":"Hello","object_key":"outbound/reply.eml"}`},
+		{body: `{"reply_to_message_id":"message-100","object_key":"outbound/reply.eml"}`},
+		{body: `{"reply_to_message_id":"message-100","body_text":"Hello"}`},
+	}
+
+	for _, tt := range tests {
+		request := httptest.NewRequest(http.MethodPost, "/threads/thread-123/reply", bytes.NewBufferString(tt.body))
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("expected bad request status for body %s, got %d", tt.body, recorder.Code)
+		}
+	}
+}
+
 func TestReplyHandlerReturnsNotFoundForMissingReplyContext(t *testing.T) {
 	handler := NewReplyHandler(&replyServiceStub{err: domain.ErrNotFound})
 

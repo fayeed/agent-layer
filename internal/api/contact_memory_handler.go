@@ -49,7 +49,7 @@ func (h ContactMemoryHandler) ServeHTTP(writer http.ResponseWriter, request *htt
 
 	entry, err := h.service.CreateContactMemory(request.Context(), contactID, payload)
 	if err != nil {
-		http.Error(writer, "failed to create contact memory", http.StatusInternalServerError)
+		writeLookupError(writer, err, "contact not found", "failed to create contact memory")
 		return
 	}
 

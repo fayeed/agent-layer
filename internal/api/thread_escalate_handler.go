@@ -39,7 +39,7 @@ func (h ThreadEscalateHandler) ServeHTTP(writer http.ResponseWriter, request *ht
 
 	thread, err := h.service.EscalateThread(request.Context(), threadID, payload.Reason)
 	if err != nil {
-		http.Error(writer, "failed to escalate thread", http.StatusInternalServerError)
+		writeLookupError(writer, err, "thread not found", "failed to escalate thread")
 		return
 	}
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -62,6 +63,31 @@ func TestThreadEscalateHandlerRejectsInvalidPayload(t *testing.T) {
 
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected bad request status, got %d", recorder.Code)
+	}
+}
+
+func TestThreadEscalateHandlerReturnsNotFoundForMissingThread(t *testing.T) {
+	handler := NewThreadEscalateHandler(&threadEscalationServiceStub{err: domain.ErrNotFound})
+	request := httptest.NewRequest(http.MethodPost, "/threads/thread-123/escalate", bytes.NewBufferString(`{
+		"reason":"needs human review"
+	}`))
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected not found status, got %d", recorder.Code)
+	}
+
+	handler = NewThreadEscalateHandler(&threadEscalationServiceStub{err: errors.New("boom")})
+	request = httptest.NewRequest(http.MethodPost, "/threads/thread-123/escalate", bytes.NewBufferString(`{
+		"reason":"needs human review"
+	}`))
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected internal error status, got %d", recorder.Code)
 	}
 }
 

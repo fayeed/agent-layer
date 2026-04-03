@@ -108,10 +108,10 @@ func TestNewServerWiresRemainingHandlers(t *testing.T) {
 		{method: http.MethodGet, path: "/webhooks/deliveries", want: http.StatusOK},
 		{method: http.MethodGet, path: "/webhooks/deliveries/delivery-123", want: http.StatusNotFound},
 		{method: http.MethodPost, path: "/webhooks/deliveries/delivery-123/replay", want: http.StatusNotFound},
-		{method: http.MethodPost, path: "/threads/thread-123/reply", body: "{}", want: http.StatusNotFound},
-		{method: http.MethodPost, path: "/threads/thread-123/escalate", body: "{}", want: http.StatusAccepted},
+		{method: http.MethodPost, path: "/threads/thread-123/reply", body: "{}", want: http.StatusBadRequest},
+		{method: http.MethodPost, path: "/threads/thread-123/escalate", body: "{}", want: http.StatusNotFound},
 		{method: http.MethodGet, path: "/threads/thread-123/messages", want: http.StatusOK},
-		{method: http.MethodPost, path: "/contacts/contact-123/memory", body: "{}", want: http.StatusCreated},
+		{method: http.MethodPost, path: "/contacts/contact-123/memory", body: "{}", want: http.StatusNotFound},
 		{method: http.MethodPost, path: "/provider/callbacks/outbound", body: "{}", want: http.StatusBadRequest},
 	}
 

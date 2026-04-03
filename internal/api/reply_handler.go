@@ -52,6 +52,18 @@ func (h ReplyHandler) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		http.Error(writer, "invalid json payload", http.StatusBadRequest)
 		return
 	}
+	if strings.TrimSpace(payload.ReplyToMessageID) == "" {
+		http.Error(writer, "reply_to_message_id is required", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(payload.BodyText) == "" {
+		http.Error(writer, "body_text is required", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(payload.ObjectKey) == "" {
+		http.Error(writer, "object_key is required", http.StatusBadRequest)
+		return
+	}
 
 	result, err := h.service.SendReply(request.Context(), outbound.SendReplyInput{
 		Organization: domain.Organization{ID: payload.OrganizationID},
