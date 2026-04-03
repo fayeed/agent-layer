@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -61,6 +62,26 @@ func TestContactHandlerRejectsInvalidPath(t *testing.T) {
 
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected bad request status, got %d", recorder.Code)
+	}
+}
+
+func TestContactHandlerReturnsNotFoundForMissingContact(t *testing.T) {
+	handler := NewContactHandler(&contactServiceStub{err: domain.ErrNotFound})
+	request := httptest.NewRequest(http.MethodGet, "/contacts/contact-123", nil)
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected not found status, got %d", recorder.Code)
+	}
+
+	handler = NewContactHandler(&contactServiceStub{err: errors.New("boom")})
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected internal error status, got %d", recorder.Code)
 	}
 }
 

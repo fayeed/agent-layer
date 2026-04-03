@@ -29,7 +29,7 @@ func (h WebhookDeliveryHandler) ServeHTTP(writer http.ResponseWriter, request *h
 
 	delivery, err := h.service.GetWebhookDelivery(request.Context(), deliveryID)
 	if err != nil {
-		http.Error(writer, "failed to load webhook delivery", http.StatusInternalServerError)
+		writeLookupError(writer, err, "webhook delivery not found", "failed to load webhook delivery")
 		return
 	}
 

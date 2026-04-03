@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -65,6 +66,26 @@ func TestThreadHandlerRejectsInvalidPath(t *testing.T) {
 
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected bad request status, got %d", recorder.Code)
+	}
+}
+
+func TestThreadHandlerReturnsNotFoundForMissingThread(t *testing.T) {
+	handler := NewThreadHandler(&threadServiceStub{err: errors.New("wrap: " + domain.ErrNotFound.Error())})
+	request := httptest.NewRequest(http.MethodGet, "/threads/thread-123", nil)
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected wrapped generic error to return 500, got %d", recorder.Code)
+	}
+
+	handler = NewThreadHandler(&threadServiceStub{err: domain.ErrNotFound})
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected not found status, got %d", recorder.Code)
 	}
 }
 

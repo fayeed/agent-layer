@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"sync"
 
@@ -75,7 +76,7 @@ func (s *Store) GetOrganizationByID(_ context.Context, organizationID string) (d
 	defer s.mu.RUnlock()
 	organization, ok := s.organizationsByID[organizationID]
 	if !ok {
-		return domain.Organization{}, ErrConfigNotFound
+		return domain.Organization{}, fmt.Errorf("%w: organization", domain.ErrNotFound)
 	}
 	return organization, nil
 }
@@ -92,7 +93,7 @@ func (s *Store) GetAgentByID(_ context.Context, agentID string) (domain.Agent, e
 	defer s.mu.RUnlock()
 	agent, ok := s.agentsByID[agentID]
 	if !ok {
-		return domain.Agent{}, ErrConfigNotFound
+		return domain.Agent{}, fmt.Errorf("%w: agent", domain.ErrNotFound)
 	}
 	return agent, nil
 }
@@ -110,7 +111,7 @@ func (s *Store) GetInboxByID(_ context.Context, inboxID string) (domain.Inbox, e
 	defer s.mu.RUnlock()
 	inbox, ok := s.inboxesByID[inboxID]
 	if !ok {
-		return domain.Inbox{}, ErrConfigNotFound
+		return domain.Inbox{}, fmt.Errorf("%w: inbox", domain.ErrNotFound)
 	}
 	return inbox, nil
 }
@@ -127,7 +128,7 @@ func (s *Store) Get(_ context.Context, objectKey string) ([]byte, error) {
 	defer s.mu.RUnlock()
 	data, ok := s.rawMessages[objectKey]
 	if !ok {
-		return nil, ErrMessageNotFound
+		return nil, fmt.Errorf("%w: raw message", domain.ErrNotFound)
 	}
 	return append([]byte(nil), data...), nil
 }
@@ -159,7 +160,7 @@ func (s *Store) GetByID(_ context.Context, threadID string) (domain.Thread, erro
 	defer s.mu.RUnlock()
 	thread, ok := s.threadsByID[threadID]
 	if !ok {
-		return domain.Thread{}, ErrThreadNotFound
+		return domain.Thread{}, fmt.Errorf("%w: thread", domain.ErrNotFound)
 	}
 	return thread, nil
 }
@@ -169,7 +170,7 @@ func (s *Store) GetContactByID(_ context.Context, contactID string) (domain.Cont
 	defer s.mu.RUnlock()
 	contact, ok := s.contactsByID[contactID]
 	if !ok {
-		return domain.Contact{}, ErrContactNotFound
+		return domain.Contact{}, fmt.Errorf("%w: contact", domain.ErrNotFound)
 	}
 	return contact, nil
 }
@@ -262,7 +263,7 @@ func (s *Store) GetMessageByID(_ context.Context, messageID string) (domain.Mess
 	defer s.mu.RUnlock()
 	message, ok := s.messagesByID[messageID]
 	if !ok {
-		return domain.Message{}, ErrMessageNotFound
+		return domain.Message{}, fmt.Errorf("%w: message", domain.ErrNotFound)
 	}
 	return message, nil
 }
@@ -310,7 +311,7 @@ func (s *Store) GetWebhookDeliveryByID(_ context.Context, deliveryID string) (do
 	defer s.mu.RUnlock()
 	delivery, ok := s.webhookDeliveriesByID[deliveryID]
 	if !ok {
-		return domain.WebhookDelivery{}, ErrMessageNotFound
+		return domain.WebhookDelivery{}, fmt.Errorf("%w: webhook delivery", domain.ErrNotFound)
 	}
 	return delivery, nil
 }

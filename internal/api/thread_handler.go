@@ -41,7 +41,7 @@ func (h ThreadHandler) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 
 	thread, err := h.service.GetThread(request.Context(), threadID)
 	if err != nil {
-		http.Error(writer, "failed to load thread", http.StatusInternalServerError)
+		writeLookupError(writer, err, "thread not found", "failed to load thread")
 		return
 	}
 

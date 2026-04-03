@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -38,6 +39,26 @@ func TestWebhookDeliveryHandlerReturnsDelivery(t *testing.T) {
 
 	if response.ID != "delivery-123" || response.ResponseCode != 500 {
 		t.Fatalf("expected webhook delivery response, got %#v", response)
+	}
+}
+
+func TestWebhookDeliveryHandlerReturnsNotFoundForMissingDelivery(t *testing.T) {
+	handler := NewWebhookDeliveryHandler(&webhookDeliveryServiceStub{err: domain.ErrNotFound})
+	request := httptest.NewRequest(http.MethodGet, "/webhooks/deliveries/delivery-123", nil)
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected not found response, got %d", recorder.Code)
+	}
+
+	handler = NewWebhookDeliveryHandler(&webhookDeliveryServiceStub{err: errors.New("boom")})
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected internal error response, got %d", recorder.Code)
 	}
 }
 

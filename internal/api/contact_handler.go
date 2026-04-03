@@ -36,7 +36,7 @@ func (h ContactHandler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 
 	contact, err := h.service.GetContact(request.Context(), contactID)
 	if err != nil {
-		http.Error(writer, "failed to load contact", http.StatusInternalServerError)
+		writeLookupError(writer, err, "contact not found", "failed to load contact")
 		return
 	}
 

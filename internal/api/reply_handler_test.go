@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -82,6 +83,36 @@ func TestReplyHandlerRejectsInvalidPayload(t *testing.T) {
 
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected bad request status, got %d", recorder.Code)
+	}
+}
+
+func TestReplyHandlerReturnsNotFoundForMissingReplyContext(t *testing.T) {
+	handler := NewReplyHandler(&replyServiceStub{err: domain.ErrNotFound})
+
+	request := httptest.NewRequest(http.MethodPost, "/threads/thread-123/reply", bytes.NewBufferString(`{
+		"reply_to_message_id":"message-100",
+		"body_text":"Thanks for reaching out.",
+		"object_key":"outbound/reply-123.eml"
+	}`))
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected not found status, got %d", recorder.Code)
+	}
+
+	handler = NewReplyHandler(&replyServiceStub{err: errors.New("boom")})
+	request = httptest.NewRequest(http.MethodPost, "/threads/thread-123/reply", bytes.NewBufferString(`{
+		"reply_to_message_id":"message-100",
+		"body_text":"Thanks for reaching out.",
+		"object_key":"outbound/reply-123.eml"
+	}`))
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected internal error status, got %d", recorder.Code)
 	}
 }
 

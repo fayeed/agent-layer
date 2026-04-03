@@ -48,13 +48,9 @@ func TestNewServerRegistersV0RouteShapes(t *testing.T) {
 		{method: http.MethodGet, path: "/bootstrap"},
 		{method: http.MethodPost, path: "/bootstrap"},
 		{method: http.MethodGet, path: "/webhooks/deliveries"},
-		{method: http.MethodGet, path: "/webhooks/deliveries/delivery-123"},
-		{method: http.MethodPost, path: "/webhooks/deliveries/delivery-123/replay"},
 		{method: http.MethodPost, path: "/threads/thread-123/reply"},
 		{method: http.MethodPost, path: "/threads/thread-123/escalate"},
-		{method: http.MethodGet, path: "/threads/thread-123"},
 		{method: http.MethodGet, path: "/threads/thread-123/messages"},
-		{method: http.MethodGet, path: "/contacts/contact-123"},
 		{method: http.MethodPost, path: "/contacts/contact-123/memory"},
 		{method: http.MethodPost, path: "/provider/callbacks/outbound"},
 	}
@@ -79,8 +75,8 @@ func TestNewServerWiresThreadHandler(t *testing.T) {
 
 	server.ServeHTTP(recorder, request)
 
-	if recorder.Code != http.StatusInternalServerError {
-		t.Fatalf("expected real thread handler path to return 500 from placeholder service, got %d", recorder.Code)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected real thread handler path to return 404 for missing thread, got %d", recorder.Code)
 	}
 }
 
@@ -92,8 +88,8 @@ func TestNewServerWiresContactHandler(t *testing.T) {
 
 	server.ServeHTTP(recorder, request)
 
-	if recorder.Code != http.StatusInternalServerError {
-		t.Fatalf("expected real contact handler path to return 500 from placeholder service, got %d", recorder.Code)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected real contact handler path to return 404 for missing contact, got %d", recorder.Code)
 	}
 }
 
@@ -110,9 +106,9 @@ func TestNewServerWiresRemainingHandlers(t *testing.T) {
 		{method: http.MethodGet, path: "/bootstrap", want: http.StatusOK},
 		{method: http.MethodPost, path: "/bootstrap", body: "{}", want: http.StatusCreated},
 		{method: http.MethodGet, path: "/webhooks/deliveries", want: http.StatusOK},
-		{method: http.MethodGet, path: "/webhooks/deliveries/delivery-123", want: http.StatusInternalServerError},
-		{method: http.MethodPost, path: "/webhooks/deliveries/delivery-123/replay", want: http.StatusInternalServerError},
-		{method: http.MethodPost, path: "/threads/thread-123/reply", body: "{}", want: http.StatusInternalServerError},
+		{method: http.MethodGet, path: "/webhooks/deliveries/delivery-123", want: http.StatusNotFound},
+		{method: http.MethodPost, path: "/webhooks/deliveries/delivery-123/replay", want: http.StatusNotFound},
+		{method: http.MethodPost, path: "/threads/thread-123/reply", body: "{}", want: http.StatusNotFound},
 		{method: http.MethodPost, path: "/threads/thread-123/escalate", body: "{}", want: http.StatusAccepted},
 		{method: http.MethodGet, path: "/threads/thread-123/messages", want: http.StatusOK},
 		{method: http.MethodPost, path: "/contacts/contact-123/memory", body: "{}", want: http.StatusCreated},

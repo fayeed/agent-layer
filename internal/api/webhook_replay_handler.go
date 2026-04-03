@@ -29,7 +29,7 @@ func (h WebhookReplayHandler) ServeHTTP(writer http.ResponseWriter, request *htt
 
 	delivery, err := h.service.ReplayDelivery(request.Context(), deliveryID)
 	if err != nil {
-		http.Error(writer, "failed to replay webhook delivery", http.StatusInternalServerError)
+		writeLookupError(writer, err, "webhook delivery not found", "failed to replay webhook delivery")
 		return
 	}
 

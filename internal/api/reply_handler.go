@@ -66,7 +66,7 @@ func (h ReplyHandler) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		ObjectKey: payload.ObjectKey,
 	})
 	if err != nil {
-		http.Error(writer, "failed to send reply", http.StatusInternalServerError)
+		writeLookupError(writer, err, "reply context not found", "failed to send reply")
 		return
 	}
 
