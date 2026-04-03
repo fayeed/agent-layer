@@ -770,6 +770,26 @@ func TestNewReplyServiceUsesRealOutboundComposition(t *testing.T) {
 	}
 }
 
+func TestNewReplyHandlerServiceLoadsRuntimeState(t *testing.T) {
+	runtimeStore = newRuntimeStore()
+	seedReplyRuntimeState(t)
+
+	service := newReplyHandlerService()
+	result, err := service.SendReply(context.Background(), outbound.SendReplyInput{
+		Thread:         domain.Thread{ID: "thread-123"},
+		ReplyToMessage: domain.Message{ID: "message-inbound-123"},
+		BodyText:       "Thanks for reaching out.",
+		ObjectKey:      "outbound/reply-123.eml",
+	})
+	if err != nil {
+		t.Fatalf("expected reply handler service to succeed, got error: %v", err)
+	}
+
+	if result.Message.ThreadID != "thread-123" || result.Message.DeliveryState != "sent" {
+		t.Fatalf("expected sent reply message, got %#v", result.Message)
+	}
+}
+
 func TestNewOutboundCallbackFlowUsesRealCallbackComposition(t *testing.T) {
 	runtimeStore = newRuntimeStore()
 	flow := newOutboundCallbackFlow()
@@ -786,6 +806,42 @@ func TestNewOutboundCallbackFlowUsesRealCallbackComposition(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected placeholder callback dependencies to fail")
+	}
+}
+
+func TestReplyEndpointSendsReplyIntegration(t *testing.T) {
+	runtimeStore = newRuntimeStore()
+	server := newServer()
+	seedReplyRuntimeState(t)
+
+	request := httptest.NewRequest(http.MethodPost, "/threads/thread-123/reply", bytes.NewBufferString(`{
+		"reply_to_message_id":"message-inbound-123",
+		"body_text":"Thanks for reaching out.",
+		"object_key":"outbound/reply-http-123.eml"
+	}`))
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("expected reply endpoint to succeed, got %d", recorder.Code)
+	}
+
+	var response map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("expected reply response json, got error: %v", err)
+	}
+
+	if response["delivery_state"] != "sent" {
+		t.Fatalf("expected sent reply response, got %#v", response)
+	}
+
+	messages, err := runtimeStore.ListByThreadID(context.Background(), "thread-123", 10)
+	if err != nil {
+		t.Fatalf("expected thread message list to succeed, got error: %v", err)
+	}
+
+	if len(messages) < 2 {
+		t.Fatalf("expected reply message to be persisted, got %#v", messages)
 	}
 }
 
@@ -892,6 +948,47 @@ func handleTestInboundMessage(t *testing.T, objectKey string) (inbound.HandleRes
 			ReceivedAt:          time.Date(2026, 4, 3, 23, 0, 0, 0, time.UTC),
 		},
 	})
+}
+
+func seedReplyRuntimeState(t *testing.T) {
+	t.Helper()
+
+	_, err := runtimeStore.UpsertByEmail(context.Background(), domain.Contact{
+		ID:           "contact-123",
+		EmailAddress: "sender@example.com",
+		DisplayName:  "Sender Example",
+	})
+	if err != nil {
+		t.Fatalf("expected contact seed to succeed, got error: %v", err)
+	}
+
+	_, err = runtimeStore.Save(context.Background(), domain.Thread{
+		ID:             "thread-123",
+		OrganizationID: "org-local",
+		AgentID:        "agent-local",
+		InboxID:        "inbox-local",
+		ContactID:      "contact-123",
+		State:          domain.ThreadStateActive,
+	})
+	if err != nil {
+		t.Fatalf("expected thread seed to succeed, got error: %v", err)
+	}
+
+	_, err = runtimeStore.Create(context.Background(), domain.Message{
+		ID:              "message-inbound-123",
+		OrganizationID:  "org-local",
+		ThreadID:        "thread-123",
+		InboxID:         "inbox-local",
+		ContactID:       "contact-123",
+		Direction:       domain.MessageDirectionInbound,
+		Subject:         "Hello World",
+		MessageIDHeader: "<message-inbound-123@example.com>",
+		TextBody:        "Inbound message",
+		CreatedAt:       time.Date(2026, 4, 3, 22, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("expected inbound message seed to succeed, got error: %v", err)
+	}
 }
 
 func waitForWebhook(t *testing.T, receivedCh <-chan receivedWebhook) receivedWebhook {

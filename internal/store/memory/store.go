@@ -257,6 +257,16 @@ func (s *Store) FindByProviderMessageID(_ context.Context, providerMessageID str
 	return message, ok, nil
 }
 
+func (s *Store) GetMessageByID(_ context.Context, messageID string) (domain.Message, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	message, ok := s.messagesByID[messageID]
+	if !ok {
+		return domain.Message{}, ErrMessageNotFound
+	}
+	return message, nil
+}
+
 func (s *Store) CreateMemory(_ context.Context, entry domain.ContactMemoryEntry) (domain.ContactMemoryEntry, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

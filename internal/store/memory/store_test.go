@@ -142,6 +142,15 @@ func TestStoreSupportsThreadContactAndMessageState(t *testing.T) {
 	if len(messages) != 1 || messages[0].ID != "message-123" {
 		t.Fatalf("expected stored messages, got %#v", messages)
 	}
+
+	message, err := store.GetMessageByID(context.Background(), "message-123")
+	if err != nil {
+		t.Fatalf("expected message get to succeed, got error: %v", err)
+	}
+
+	if message.MessageIDHeader != "<message-123@example.com>" {
+		t.Fatalf("expected stored message lookup, got %#v", message)
+	}
 }
 
 func TestStoreSupportsMemoryAndWebhookDeliveryState(t *testing.T) {

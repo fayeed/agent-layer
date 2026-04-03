@@ -50,7 +50,7 @@ func newServer() http.Handler {
 	mux.Handle("GET /webhooks/deliveries", api.NewWebhookDeliveriesHandler(newWebhookDeliveriesHandlerService()))
 	mux.Handle("GET /webhooks/deliveries/{deliveryID}", api.NewWebhookDeliveryHandler(newWebhookDeliveryHandlerService()))
 	mux.Handle("POST /webhooks/deliveries/{deliveryID}/replay", api.NewWebhookReplayHandler(newWebhookReplayHandlerService()))
-	mux.Handle("POST /threads/{threadID}/reply", api.NewReplyHandler(newReplyService()))
+	mux.Handle("POST /threads/{threadID}/reply", api.NewReplyHandler(newReplyHandlerService()))
 	mux.Handle("POST /threads/{threadID}/escalate", api.NewThreadEscalateHandler(newThreadEscalationService()))
 	mux.Handle("GET /threads/{threadID}", api.NewThreadHandler(newThreadReadService()))
 	mux.Handle("GET /threads/{threadID}/messages", api.NewThreadMessagesHandler(newThreadMessagesReadService()))
@@ -287,6 +287,18 @@ func newReplyService() outbound.Service {
 	)
 }
 
+func newReplyHandlerService() api.ReplyService {
+	return replyServiceAdapter{
+		service:  newReplyService(),
+		orgs:     runtimeStore,
+		agents:   runtimeStore,
+		inboxes:  runtimeStore,
+		threads:  runtimeStore,
+		contacts: contactGetterAdapter{store: runtimeStore},
+		messages: messageGetterAdapter{store: runtimeStore},
+	}
+}
+
 func newOutboundCallbackFlow() outbound.CallbackFlow {
 	return outbound.NewCallbackFlow(
 		outbound.NewCallbackService(
@@ -453,6 +465,16 @@ type bootstrapServiceAdapter struct{ service app.BootstrapService }
 
 type bootstrapReadServiceAdapter struct{ service app.BootstrapReadService }
 
+type replyServiceAdapter struct {
+	service  outbound.Service
+	orgs     organizationGetter
+	agents   agentGetter
+	inboxes  inboxGetter
+	threads  threadGetter
+	contacts contactGetter
+	messages messageGetter
+}
+
 type webhookDeliveryListServiceAdapter struct {
 	service app.WebhookDeliveryListService
 }
@@ -500,6 +522,66 @@ func (a bootstrapReadServiceAdapter) GetBootstrap(ctx context.Context) (api.Boot
 		WebhookURL:     result.Agent.WebhookURL,
 		InboxAddress:   result.Inbox.EmailAddress,
 	}, nil
+}
+
+func (a replyServiceAdapter) SendReply(ctx context.Context, input outbound.SendReplyInput) (outbound.SendReplyResult, error) {
+	organizationID := input.Organization.ID
+	if organizationID == "" {
+		organizationID = "org-local"
+	}
+	agentID := input.Agent.ID
+	if agentID == "" {
+		agentID = "agent-local"
+	}
+	inboxID := input.Inbox.ID
+	if inboxID == "" {
+		inboxID = "inbox-local"
+	}
+
+	organization, err := a.orgs.GetOrganizationByID(ctx, organizationID)
+	if err != nil {
+		return outbound.SendReplyResult{}, err
+	}
+
+	agent, err := a.agents.GetAgentByID(ctx, agentID)
+	if err != nil {
+		return outbound.SendReplyResult{}, err
+	}
+
+	inbox, err := a.inboxes.GetInboxByID(ctx, inboxID)
+	if err != nil {
+		return outbound.SendReplyResult{}, err
+	}
+
+	thread, err := a.threads.GetByID(ctx, input.Thread.ID)
+	if err != nil {
+		return outbound.SendReplyResult{}, err
+	}
+
+	contactID := input.Contact.ID
+	if contactID == "" {
+		contactID = thread.ContactID
+	}
+	contact, err := a.contacts.GetByID(ctx, contactID)
+	if err != nil {
+		return outbound.SendReplyResult{}, err
+	}
+
+	replyToMessage, err := a.messages.GetMessageByID(ctx, input.ReplyToMessage.ID)
+	if err != nil {
+		return outbound.SendReplyResult{}, err
+	}
+
+	return a.service.SendReply(ctx, outbound.SendReplyInput{
+		Organization:   organization,
+		Agent:          agent,
+		Inbox:          inbox,
+		Thread:         thread,
+		ReplyToMessage: replyToMessage,
+		Contact:        contact,
+		BodyText:       input.BodyText,
+		ObjectKey:      input.ObjectKey,
+	})
 }
 
 func (a webhookDeliveryListServiceAdapter) ListWebhookDeliveries(ctx context.Context, limit int) ([]domain.WebhookDelivery, error) {
@@ -560,4 +642,34 @@ func (a webhookDeliveryGetterAdapter) GetWebhookDeliveryByID(ctx context.Context
 
 func (a webhookDeliveryGetterAdapter) ListWebhookDeliveries(ctx context.Context, limit int) ([]domain.WebhookDelivery, error) {
 	return a.store.ListWebhookDeliveries(ctx, limit)
+}
+
+type organizationGetter interface {
+	GetOrganizationByID(ctx context.Context, organizationID string) (domain.Organization, error)
+}
+
+type agentGetter interface {
+	GetAgentByID(ctx context.Context, agentID string) (domain.Agent, error)
+}
+
+type inboxGetter interface {
+	GetInboxByID(ctx context.Context, inboxID string) (domain.Inbox, error)
+}
+
+type threadGetter interface {
+	GetByID(ctx context.Context, threadID string) (domain.Thread, error)
+}
+
+type contactGetter interface {
+	GetByID(ctx context.Context, contactID string) (domain.Contact, error)
+}
+
+type messageGetter interface {
+	GetMessageByID(ctx context.Context, messageID string) (domain.Message, error)
+}
+
+type messageGetterAdapter struct{ store *memorystore.Store }
+
+func (a messageGetterAdapter) GetMessageByID(ctx context.Context, messageID string) (domain.Message, error) {
+	return a.store.GetMessageByID(ctx, messageID)
 }
