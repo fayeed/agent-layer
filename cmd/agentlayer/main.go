@@ -45,6 +45,7 @@ type serveServer interface {
 func newServer() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealth)
+	mux.Handle("GET /bootstrap", api.NewBootstrapReadHandler(newBootstrapReadHandlerService()))
 	mux.Handle("POST /bootstrap", api.NewBootstrapHandler(newBootstrapHandlerService()))
 	mux.Handle("POST /threads/{threadID}/reply", api.NewReplyHandler(newReplyService()))
 	mux.Handle("POST /threads/{threadID}/escalate", api.NewThreadEscalateHandler(newThreadEscalationService()))
@@ -237,6 +238,14 @@ func newBootstrapHandlerService() api.BootstrapService {
 	return bootstrapServiceAdapter{service: newBootstrapService()}
 }
 
+func newBootstrapReadService() app.BootstrapReadService {
+	return app.NewBootstrapReadService(runtimeStore, runtimeStore, runtimeStore)
+}
+
+func newBootstrapReadHandlerService() api.BootstrapReadService {
+	return bootstrapReadServiceAdapter{service: newBootstrapReadService()}
+}
+
 func newInboundRecorder() inbound.Recorder {
 	return inbound.NewRecorder(
 		runtimeStore,
@@ -410,6 +419,8 @@ type contactGetterAdapter struct{ store *memorystore.Store }
 
 type bootstrapServiceAdapter struct{ service app.BootstrapService }
 
+type bootstrapReadServiceAdapter struct{ service app.BootstrapReadService }
+
 func (a bootstrapServiceAdapter) BootstrapLocal(ctx context.Context, input api.BootstrapInput) (api.BootstrapResult, error) {
 	result, err := a.service.BootstrapLocal(ctx, app.BootstrapInput{
 		OrganizationName: input.OrganizationName,
@@ -421,6 +432,21 @@ func (a bootstrapServiceAdapter) BootstrapLocal(ctx context.Context, input api.B
 		InboxDomain:      input.InboxDomain,
 		InboxDisplayName: input.InboxDisplayName,
 	})
+	if err != nil {
+		return api.BootstrapResult{}, err
+	}
+
+	return api.BootstrapResult{
+		OrganizationID: result.Organization.ID,
+		AgentID:        result.Agent.ID,
+		InboxID:        result.Inbox.ID,
+		WebhookURL:     result.Agent.WebhookURL,
+		InboxAddress:   result.Inbox.EmailAddress,
+	}, nil
+}
+
+func (a bootstrapReadServiceAdapter) GetBootstrap(ctx context.Context) (api.BootstrapResult, error) {
+	result, err := a.service.GetBootstrap(ctx)
 	if err != nil {
 		return api.BootstrapResult{}, err
 	}

@@ -42,6 +42,7 @@ func TestNewServerRegistersV0RouteShapes(t *testing.T) {
 		method string
 		path   string
 	}{
+		{method: http.MethodGet, path: "/bootstrap"},
 		{method: http.MethodPost, path: "/bootstrap"},
 		{method: http.MethodPost, path: "/threads/thread-123/reply"},
 		{method: http.MethodPost, path: "/threads/thread-123/escalate"},
@@ -100,6 +101,7 @@ func TestNewServerWiresRemainingHandlers(t *testing.T) {
 		body   string
 		want   int
 	}{
+		{method: http.MethodGet, path: "/bootstrap", want: http.StatusOK},
 		{method: http.MethodPost, path: "/bootstrap", body: "{}", want: http.StatusCreated},
 		{method: http.MethodPost, path: "/threads/thread-123/reply", body: "{}", want: http.StatusInternalServerError},
 		{method: http.MethodPost, path: "/threads/thread-123/escalate", body: "{}", want: http.StatusAccepted},
@@ -326,6 +328,35 @@ func TestNewBootstrapServiceUsesApplicationService(t *testing.T) {
 
 	if inbox.EmailAddress != "agent@example.com" {
 		t.Fatalf("expected bootstrapped inbox address, got %#v", inbox)
+	}
+}
+
+func TestNewBootstrapReadServiceUsesApplicationService(t *testing.T) {
+	runtimeStore = newRuntimeStore()
+
+	_, err := newBootstrapService().BootstrapLocal(context.Background(), app.BootstrapInput{
+		OrganizationName: "Acme Support",
+		AgentName:        "Acme Agent",
+		WebhookURL:       "https://example.com/webhook",
+		InboxAddress:     "agent@example.com",
+		InboxDomain:      "example.com",
+		InboxDisplayName: "Acme Inbox",
+	})
+	if err != nil {
+		t.Fatalf("expected bootstrap seed to succeed, got error: %v", err)
+	}
+
+	result, err := newBootstrapReadService().GetBootstrap(context.Background())
+	if err != nil {
+		t.Fatalf("expected bootstrap read to succeed, got error: %v", err)
+	}
+
+	if result.Organization.Name != "Acme Support" {
+		t.Fatalf("expected organization name from store, got %#v", result.Organization)
+	}
+
+	if result.Agent.WebhookURL != "https://example.com/webhook" {
+		t.Fatalf("expected webhook url from store, got %#v", result.Agent)
 	}
 }
 
