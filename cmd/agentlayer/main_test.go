@@ -180,6 +180,22 @@ func TestSMTPAddressHelpers(t *testing.T) {
 	}
 }
 
+func TestRuntimeEnvHelpers(t *testing.T) {
+	t.Setenv("AGENTLAYER_DATABASE_URL", "postgres://agentlayer:agentlayer@localhost:5432/agentlayer?sslmode=disable")
+	t.Setenv("AGENTLAYER_RAW_DATA_DIR", "/tmp/agentlayer-raw")
+	t.Setenv("AGENTLAYER_AUTO_MIGRATE", "true")
+
+	if got := databaseURL(); got == "" {
+		t.Fatal("expected database url helper to read env")
+	}
+	if got := rawDataDir(); got != "/tmp/agentlayer-raw" {
+		t.Fatalf("expected raw data dir helper to read env, got %q", got)
+	}
+	if !autoMigrateEnabled() {
+		t.Fatal("expected auto migrate helper to be enabled")
+	}
+}
+
 func TestSMTPReceiptIdentifierHelpers(t *testing.T) {
 	now := time.Date(2026, 4, 9, 12, 34, 56, 123456789, time.UTC)
 

@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/agentlayer/agentlayer/db/migrations"
 	"github.com/agentlayer/agentlayer/internal/api"
 	"github.com/agentlayer/agentlayer/internal/app"
 	"github.com/agentlayer/agentlayer/internal/contacts"
@@ -115,6 +116,11 @@ func rawDataDir() string {
 	return ".agentlayer-data/raw"
 }
 
+func autoMigrateEnabled() bool {
+	value := os.Getenv("AGENTLAYER_AUTO_MIGRATE")
+	return value == "1" || value == "true" || value == "TRUE"
+}
+
 func newRuntimeStore() appStore {
 	if databaseURL() != "" {
 		db, err := sql.Open("pgx", databaseURL())
@@ -127,14 +133,27 @@ func newRuntimeStore() appStore {
 			_ = db.Close()
 			panic(err)
 		}
+		if autoMigrateEnabled() {
+			if err := applyV0Schema(ctx, db); err != nil {
+				_ = db.Close()
+				panic(err)
+			}
+		}
 		store := newPostgresRuntimeStore(db, blobfs.NewStore(rawDataDir()))
+		log.Printf("agentlayer runtime store: postgres raw=%s auto_migrate=%t", rawDataDir(), autoMigrateEnabled())
 		seedLocalRuntime(store)
 		return store
 	}
 
 	store := memorystore.NewStore()
+	log.Printf("agentlayer runtime store: memory")
 	seedLocalRuntime(store)
 	return store
+}
+
+func applyV0Schema(ctx context.Context, db *sql.DB) error {
+	_, err := db.ExecContext(ctx, migrations.V0CoreSQL())
+	return err
 }
 
 func seedLocalRuntime(store interface {
