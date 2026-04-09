@@ -184,6 +184,8 @@ func TestRuntimeEnvHelpers(t *testing.T) {
 	t.Setenv("AGENTLAYER_DATABASE_URL", "postgres://agentlayer:agentlayer@localhost:5432/agentlayer?sslmode=disable")
 	t.Setenv("AGENTLAYER_RAW_DATA_DIR", "/tmp/agentlayer-raw")
 	t.Setenv("AGENTLAYER_AUTO_MIGRATE", "true")
+	t.Setenv("AGENTLAYER_EMAIL_PROVIDER", "ses")
+	t.Setenv("AWS_REGION", "us-east-1")
 
 	if got := databaseURL(); got == "" {
 		t.Fatal("expected database url helper to read env")
@@ -194,6 +196,56 @@ func TestRuntimeEnvHelpers(t *testing.T) {
 	if !autoMigrateEnabled() {
 		t.Fatal("expected auto migrate helper to be enabled")
 	}
+	if got := emailProviderType(); got != "ses" {
+		t.Fatalf("expected email provider helper to read env, got %q", got)
+	}
+	if got := awsRegion(); got != "us-east-1" {
+		t.Fatalf("expected aws region helper to read env, got %q", got)
+	}
+}
+
+func TestValidateEmailProviderConfig(t *testing.T) {
+	t.Run("dev default", func(t *testing.T) {
+		t.Setenv("AGENTLAYER_EMAIL_PROVIDER", "")
+		t.Setenv("AWS_REGION", "")
+
+		if err := validateEmailProviderConfig(); err != nil {
+			t.Fatalf("expected dev provider config to be valid, got %v", err)
+		}
+	})
+
+	t.Run("ses requires region", func(t *testing.T) {
+		t.Setenv("AGENTLAYER_EMAIL_PROVIDER", "ses")
+		t.Setenv("AWS_REGION", "")
+
+		err := validateEmailProviderConfig()
+		if err == nil || !strings.Contains(err.Error(), "AWS_REGION") {
+			t.Fatalf("expected missing region error, got %v", err)
+		}
+	})
+
+	t.Run("unknown provider", func(t *testing.T) {
+		t.Setenv("AGENTLAYER_EMAIL_PROVIDER", "mailgun")
+		t.Setenv("AWS_REGION", "")
+
+		err := validateEmailProviderConfig()
+		if err == nil || !strings.Contains(err.Error(), "unsupported email provider") {
+			t.Fatalf("expected unsupported provider error, got %v", err)
+		}
+	})
+}
+
+func TestNewEmailProviderPanicsOnInvalidConfig(t *testing.T) {
+	t.Setenv("AGENTLAYER_EMAIL_PROVIDER", "ses")
+	t.Setenv("AWS_REGION", "")
+
+	defer func() {
+		if recovered := recover(); recovered == nil {
+			t.Fatal("expected invalid ses config to panic")
+		}
+	}()
+
+	_ = newEmailProvider()
 }
 
 func TestSMTPReceiptIdentifierHelpers(t *testing.T) {

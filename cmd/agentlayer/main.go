@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/agentlayer/agentlayer/db/migrations"
@@ -126,6 +128,20 @@ func emailProviderType() string {
 
 func awsRegion() string {
 	return os.Getenv("AWS_REGION")
+}
+
+func validateEmailProviderConfig() error {
+	switch emailProviderType() {
+	case "dev":
+		return nil
+	case "ses":
+		if strings.TrimSpace(awsRegion()) == "" {
+			return errors.New("AWS_REGION is required when AGENTLAYER_EMAIL_PROVIDER=ses")
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported email provider %q", emailProviderType())
+	}
 }
 
 func autoMigrateEnabled() bool {
@@ -402,6 +418,10 @@ func newReplyService() outbound.Service {
 }
 
 func newEmailProvider() outbound.EmailProvider {
+	if err := validateEmailProviderConfig(); err != nil {
+		panic(err)
+	}
+
 	switch emailProviderType() {
 	case "ses":
 		provider, err := sesprovider.NewEmailProvider(context.Background(), awsRegion(), time.Now)

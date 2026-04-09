@@ -88,6 +88,7 @@ The runtime currently supports:
 - `AGENTLAYER_EMAIL_PROVIDER=ses`
 
 SES mode uses the latest `aws-sdk-go-v2` client and expects standard AWS credentials plus `AWS_REGION`.
+The server now fails fast on boot if `AGENTLAYER_EMAIL_PROVIDER=ses` is selected without `AWS_REGION`.
 
 Example:
 
