@@ -11,7 +11,7 @@ import (
 )
 
 type Clock func() time.Time
-type ObjectKeyGenerator func() string
+type ObjectKeyGenerator func(now time.Time, inbox domain.Inbox) string
 
 type InboxLookup interface {
 	FindByEmailAddress(ctx context.Context, emailAddress string) (domain.Inbox, bool, error)
@@ -49,7 +49,9 @@ func NewSession(
 		now = time.Now
 	}
 	if nextKey == nil {
-		nextKey = func() string { return "raw/generated.eml" }
+		nextKey = func(now time.Time, inbox domain.Inbox) string {
+			return NewRawMessageObjectKey(now, inbox)
+		}
 	}
 
 	return Session{
@@ -101,7 +103,8 @@ func (s *Session) Data(ctx context.Context, reader io.Reader) error {
 		return err
 	}
 
-	objectKey := s.nextKey()
+	receivedAt := s.now().UTC()
+	objectKey := s.nextKey(receivedAt, s.targetInbox)
 	if err := s.store.Put(ctx, objectKey, raw); err != nil {
 		return err
 	}
@@ -114,6 +117,6 @@ func (s *Session) Data(ctx context.Context, reader io.Reader) error {
 		EnvelopeSender:      s.sender,
 		EnvelopeRecipients:  []string{s.recipient},
 		RawMessageObjectKey: objectKey,
-		ReceivedAt:          s.now().UTC(),
+		ReceivedAt:          receivedAt,
 	})
 }

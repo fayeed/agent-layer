@@ -182,7 +182,7 @@ func TestSMTPReceiptIdentifierHelpers(t *testing.T) {
 		t.Fatalf("expected generated smtp session id, got %q", sessionID)
 	}
 
-	objectKey := smtpedge.NewRawMessageObjectKey(now, "inbox-local")
+	objectKey := smtpedge.NewRawMessageObjectKey(now, domain.Inbox{ID: "inbox-local"})
 	if !strings.HasPrefix(objectKey, "raw/2026/04/09/inbox-local/") {
 		t.Fatalf("expected generated raw message object key, got %q", objectKey)
 	}

@@ -26,7 +26,13 @@ func TestSessionAcceptsKnownRecipientAndEmitsReceipt(t *testing.T) {
 
 	session := NewSession(lookup, store, sink, func() time.Time {
 		return time.Date(2026, 4, 3, 15, 0, 0, 0, time.UTC)
-	}, func() string {
+	}, func(now time.Time, inbox domain.Inbox) string {
+		if !now.Equal(time.Date(2026, 4, 3, 15, 0, 0, 0, time.UTC)) {
+			t.Fatalf("expected object key generator to receive receipt time, got %v", now)
+		}
+		if inbox.ID != "inbox-123" {
+			t.Fatalf("expected object key generator to receive accepted inbox, got %#v", inbox)
+		}
 		return "raw/inbound-123.eml"
 	}, "smtp-session-123")
 
@@ -64,7 +70,7 @@ func TestSessionAcceptsKnownRecipientAndEmitsReceipt(t *testing.T) {
 }
 
 func TestSessionRejectsUnknownRecipient(t *testing.T) {
-	session := NewSession(&inboxLookupStub{}, &rawMessageStoreStub{}, &receiptSinkStub{}, time.Now, func() string {
+	session := NewSession(&inboxLookupStub{}, &rawMessageStoreStub{}, &receiptSinkStub{}, time.Now, func(time.Time, domain.Inbox) string {
 		return "raw/unused.eml"
 	}, "smtp-session-123")
 
@@ -74,7 +80,7 @@ func TestSessionRejectsUnknownRecipient(t *testing.T) {
 }
 
 func TestSessionRejectsDataWithoutRecipient(t *testing.T) {
-	session := NewSession(&inboxLookupStub{}, &rawMessageStoreStub{}, &receiptSinkStub{}, time.Now, func() string {
+	session := NewSession(&inboxLookupStub{}, &rawMessageStoreStub{}, &receiptSinkStub{}, time.Now, func(time.Time, domain.Inbox) string {
 		return "raw/unused.eml"
 	}, "smtp-session-123")
 
@@ -84,6 +90,47 @@ func TestSessionRejectsDataWithoutRecipient(t *testing.T) {
 
 	if err := session.Data(context.Background(), bytes.NewBufferString("raw mime body")); err == nil {
 		t.Fatal("expected DATA without accepted recipient to fail")
+	}
+}
+
+func TestSessionUsesDefaultInboxAwareObjectKeyGenerator(t *testing.T) {
+	lookup := &inboxLookupStub{
+		inbox: domain.Inbox{
+			ID:             "Inbox Local/Primary",
+			OrganizationID: "org-123",
+			AgentID:        "agent-123",
+			EmailAddress:   "agent@example.com",
+		},
+		found: true,
+	}
+	store := &rawMessageStoreStub{}
+	sink := &receiptSinkStub{}
+	receivedAt := time.Date(2026, 4, 9, 12, 34, 56, 0, time.UTC)
+
+	session := NewSession(lookup, store, sink, func() time.Time { return receivedAt }, nil, "smtp-session-123")
+
+	if err := session.Mail(context.Background(), "sender@example.com"); err != nil {
+		t.Fatalf("expected MAIL FROM to succeed, got error: %v", err)
+	}
+
+	if err := session.Rcpt(context.Background(), "agent@example.com"); err != nil {
+		t.Fatalf("expected RCPT TO to succeed, got error: %v", err)
+	}
+
+	if err := session.Data(context.Background(), bytes.NewBufferString("raw mime body")); err != nil {
+		t.Fatalf("expected DATA to succeed, got error: %v", err)
+	}
+
+	if store.objectKey == "" {
+		t.Fatal("expected default object key generator to produce a key")
+	}
+
+	if sink.receipt.RawMessageObjectKey != store.objectKey {
+		t.Fatalf("expected stored object key to match receipt, got store=%q receipt=%q", store.objectKey, sink.receipt.RawMessageObjectKey)
+	}
+
+	if sink.receipt.ReceivedAt != receivedAt {
+		t.Fatalf("expected receipt timestamp to use session clock, got %v", sink.receipt.ReceivedAt)
 	}
 }
 

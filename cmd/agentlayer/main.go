@@ -131,7 +131,7 @@ func newSMTPServer() *smtp.Server {
 				runtimeStore,
 				smtpedge.NewReceiptSink(newInboundService()),
 				func() time.Time { return now },
-				func() string { return smtpedge.NewRawMessageObjectKey(now, "inbox-local") },
+				smtpedge.NewRawMessageObjectKey,
 				sessionID,
 			)
 			return &session

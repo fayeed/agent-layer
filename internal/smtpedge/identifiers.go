@@ -5,15 +5,17 @@ import (
 	"encoding/hex"
 	"strings"
 	"time"
+
+	"github.com/agentlayer/agentlayer/internal/domain"
 )
 
 func NewSessionID(now time.Time) string {
 	return "smtp-" + now.UTC().Format("20060102T150405.000000000Z") + "-" + randomHex(6)
 }
 
-func NewRawMessageObjectKey(now time.Time, inboxID string) string {
+func NewRawMessageObjectKey(now time.Time, inbox domain.Inbox) string {
 	date := now.UTC().Format("2006/01/02")
-	inboxID = sanitizePathSegment(inboxID)
+	inboxID := sanitizePathSegment(inbox.ID)
 	if inboxID == "" {
 		inboxID = "unknown"
 	}

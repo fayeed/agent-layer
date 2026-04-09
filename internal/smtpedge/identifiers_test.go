@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/agentlayer/agentlayer/internal/domain"
 )
 
 func TestNewSessionIDIncludesTimestampAndPrefix(t *testing.T) {
@@ -19,7 +21,7 @@ func TestNewSessionIDIncludesTimestampAndPrefix(t *testing.T) {
 func TestNewRawMessageObjectKeyIncludesDateAndInbox(t *testing.T) {
 	now := time.Date(2026, 4, 9, 12, 34, 56, 0, time.UTC)
 
-	objectKey := NewRawMessageObjectKey(now, "Inbox Local/Primary")
+	objectKey := NewRawMessageObjectKey(now, domain.Inbox{ID: "Inbox Local/Primary"})
 
 	if !strings.HasPrefix(objectKey, "raw/2026/04/09/inbox-local-primary/") {
 		t.Fatalf("expected dated inbox-scoped object key, got %q", objectKey)
