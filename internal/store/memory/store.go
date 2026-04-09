@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/agentlayer/agentlayer/internal/domain"
+	"github.com/agentlayer/agentlayer/internal/inbound"
 	"github.com/agentlayer/agentlayer/internal/platform/idempotency"
 )
 
@@ -26,6 +27,7 @@ type Store struct {
 	rawMessages           map[string][]byte
 	inboxesByID           map[string]domain.Inbox
 	inboxesByEmail        map[string]domain.Inbox
+	inboundReceiptsByKey  map[string]inbound.DurableReceiptRequest
 	contactsByID          map[string]domain.Contact
 	contactsByEmail       map[string]domain.Contact
 	threadsByID           map[string]domain.Thread
@@ -46,6 +48,7 @@ func NewStore() *Store {
 		rawMessages:           make(map[string][]byte),
 		inboxesByID:           make(map[string]domain.Inbox),
 		inboxesByEmail:        make(map[string]domain.Inbox),
+		inboundReceiptsByKey:  make(map[string]inbound.DurableReceiptRequest),
 		contactsByID:          make(map[string]domain.Contact),
 		contactsByEmail:       make(map[string]domain.Contact),
 		threadsByID:           make(map[string]domain.Thread),
@@ -134,6 +137,23 @@ func (s *Store) Get(_ context.Context, objectKey string) ([]byte, error) {
 		return nil, fmt.Errorf("%w: raw message", domain.ErrNotFound)
 	}
 	return append([]byte(nil), data...), nil
+}
+
+func (s *Store) SaveInboundReceipt(_ context.Context, receipt inbound.DurableReceiptRequest) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.inboundReceiptsByKey[receipt.RawMessageObjectKey] = receipt
+	return nil
+}
+
+func (s *Store) GetInboundReceiptByObjectKey(_ context.Context, objectKey string) (inbound.DurableReceiptRequest, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	receipt, ok := s.inboundReceiptsByKey[objectKey]
+	if !ok {
+		return inbound.DurableReceiptRequest{}, fmt.Errorf("%w: inbound receipt", domain.ErrNotFound)
+	}
+	return receipt, nil
 }
 
 func (s *Store) FindByEmailAddress(_ context.Context, emailAddress string) (domain.Inbox, bool, error) {

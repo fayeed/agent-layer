@@ -11,7 +11,8 @@ import (
 
 func TestReceiptSinkEnqueuesStoredInboundMessage(t *testing.T) {
 	handler := &storedMessageHandlerStub{}
-	sink := NewReceiptSink(handler)
+	recorder := &receiptRecorderStub{}
+	sink := NewReceiptSinkWithRecorder(handler, recorder)
 	receivedAt := time.Date(2026, 4, 3, 16, 0, 0, 0, time.UTC)
 
 	err := sink.Enqueue(context.Background(), inbound.DurableReceiptRequest{
@@ -43,6 +44,10 @@ func TestReceiptSinkEnqueuesStoredInboundMessage(t *testing.T) {
 	if !handler.message.Receipt.ReceivedAt.Equal(receivedAt) {
 		t.Fatalf("expected received time %v, got %#v", receivedAt, handler.message)
 	}
+
+	if recorder.receipt.RawMessageObjectKey != "raw/inbound-123.eml" {
+		t.Fatalf("expected recorder to persist receipt before handling, got %#v", recorder.receipt)
+	}
 }
 
 type storedMessageHandlerStub struct {
@@ -53,4 +58,14 @@ type storedMessageHandlerStub struct {
 func (s *storedMessageHandlerStub) HandleStoredMessage(_ context.Context, message core.StoredInboundMessage) (inbound.HandleResult, error) {
 	s.message = message
 	return inbound.HandleResult{}, s.err
+}
+
+type receiptRecorderStub struct {
+	receipt inbound.DurableReceiptRequest
+	err     error
+}
+
+func (s *receiptRecorderStub) SaveInboundReceipt(_ context.Context, receipt inbound.DurableReceiptRequest) error {
+	s.receipt = receipt
+	return s.err
 }

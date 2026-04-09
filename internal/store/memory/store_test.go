@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/agentlayer/agentlayer/internal/domain"
+	"github.com/agentlayer/agentlayer/internal/inbound"
 )
 
 func TestStoreSupportsSeededInboxAndRawMessageAccess(t *testing.T) {
@@ -35,6 +36,29 @@ func TestStoreSupportsSeededInboxAndRawMessageAccess(t *testing.T) {
 
 	if inbox.ID != "inbox-123" {
 		t.Fatalf("expected seeded inbox, got %#v", inbox)
+	}
+
+	receipt := inbound.DurableReceiptRequest{
+		SMTPTransactionID:   "smtp-session-123",
+		OrganizationID:      "org-123",
+		AgentID:             "agent-123",
+		InboxID:             "inbox-123",
+		EnvelopeSender:      "sender@example.com",
+		EnvelopeRecipients:  []string{"agent@example.com"},
+		RawMessageObjectKey: "raw/test.eml",
+		ReceivedAt:          time.Date(2026, 4, 9, 12, 0, 0, 0, time.UTC),
+	}
+	if err := store.SaveInboundReceipt(context.Background(), receipt); err != nil {
+		t.Fatalf("expected inbound receipt save to succeed, got error: %v", err)
+	}
+
+	loadedReceipt, err := store.GetInboundReceiptByObjectKey(context.Background(), "raw/test.eml")
+	if err != nil {
+		t.Fatalf("expected inbound receipt lookup to succeed, got error: %v", err)
+	}
+
+	if loadedReceipt.SMTPTransactionID != "smtp-session-123" {
+		t.Fatalf("expected stored inbound receipt, got %#v", loadedReceipt)
 	}
 }
 

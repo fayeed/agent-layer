@@ -129,7 +129,7 @@ func newSMTPServer() *smtp.Server {
 			session := smtpedge.NewSession(
 				runtimeStore,
 				runtimeStore,
-				smtpedge.NewReceiptSink(newInboundService()),
+				smtpedge.NewReceiptSinkWithRecorder(newInboundService(), runtimeStore),
 				func() time.Time { return now },
 				smtpedge.NewRawMessageObjectKey,
 				sessionID,
