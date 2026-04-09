@@ -62,6 +62,30 @@ func TestStoreSupportsSeededInboxAndRawMessageAccess(t *testing.T) {
 	}
 }
 
+func TestStoreListsInboundReceiptsByMostRecentFirst(t *testing.T) {
+	store := NewStore()
+
+	_ = store.SaveInboundReceipt(context.Background(), inbound.DurableReceiptRequest{
+		SMTPTransactionID:   "smtp-older",
+		RawMessageObjectKey: "raw/older.eml",
+		ReceivedAt:          time.Date(2026, 4, 9, 10, 0, 0, 0, time.UTC),
+	})
+	_ = store.SaveInboundReceipt(context.Background(), inbound.DurableReceiptRequest{
+		SMTPTransactionID:   "smtp-newer",
+		RawMessageObjectKey: "raw/newer.eml",
+		ReceivedAt:          time.Date(2026, 4, 9, 11, 0, 0, 0, time.UTC),
+	})
+
+	receipts, err := store.ListInboundReceipts(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("expected inbound receipt list to succeed, got error: %v", err)
+	}
+
+	if len(receipts) != 2 || receipts[0].RawMessageObjectKey != "raw/newer.eml" || receipts[1].RawMessageObjectKey != "raw/older.eml" {
+		t.Fatalf("expected inbound receipts ordered by recency, got %#v", receipts)
+	}
+}
+
 func TestStoreSupportsBootstrapConfigState(t *testing.T) {
 	store := NewStore()
 

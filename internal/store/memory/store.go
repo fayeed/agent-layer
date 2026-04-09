@@ -156,6 +156,29 @@ func (s *Store) GetInboundReceiptByObjectKey(_ context.Context, objectKey string
 	return receipt, nil
 }
 
+func (s *Store) ListInboundReceipts(_ context.Context, limit int) ([]inbound.DurableReceiptRequest, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := make([]inbound.DurableReceiptRequest, 0, len(s.inboundReceiptsByKey))
+	for _, receipt := range s.inboundReceiptsByKey {
+		out = append(out, receipt)
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].ReceivedAt.Equal(out[j].ReceivedAt) {
+			return out[i].ReceivedAt.After(out[j].ReceivedAt)
+		}
+		return out[i].RawMessageObjectKey > out[j].RawMessageObjectKey
+	})
+
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+
+	return out, nil
+}
+
 func (s *Store) FindByEmailAddress(_ context.Context, emailAddress string) (domain.Inbox, bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

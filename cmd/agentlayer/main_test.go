@@ -48,6 +48,7 @@ func TestNewServerRegistersV0RouteShapes(t *testing.T) {
 	}{
 		{method: http.MethodGet, path: "/bootstrap"},
 		{method: http.MethodPost, path: "/bootstrap"},
+		{method: http.MethodGet, path: "/inbound/receipts/list"},
 		{method: http.MethodGet, path: "/inbound/receipts"},
 		{method: http.MethodPost, path: "/inbound/reprocess"},
 		{method: http.MethodGet, path: "/webhooks/deliveries"},
@@ -108,6 +109,7 @@ func TestNewServerWiresRemainingHandlers(t *testing.T) {
 	}{
 		{method: http.MethodGet, path: "/bootstrap", want: http.StatusOK},
 		{method: http.MethodPost, path: "/bootstrap", body: "{}", want: http.StatusBadRequest},
+		{method: http.MethodGet, path: "/inbound/receipts/list", want: http.StatusOK},
 		{method: http.MethodGet, path: "/inbound/receipts", want: http.StatusBadRequest},
 		{method: http.MethodPost, path: "/inbound/reprocess", body: "{}", want: http.StatusBadRequest},
 		{method: http.MethodGet, path: "/webhooks/deliveries", want: http.StatusOK},
@@ -653,6 +655,45 @@ func TestInboundReceiptEndpointLoadsStoredReceipt(t *testing.T) {
 
 	if response["raw_message_object_key"] != "raw/receipt-message.eml" || response["smtp_transaction_id"] != "smtp-test-session" {
 		t.Fatalf("expected stored inbound receipt response, got %#v", response)
+	}
+}
+
+func TestInboundReceiptsEndpointListsStoredReceiptsWithLimit(t *testing.T) {
+	runtimeStore = newRuntimeStore()
+	server := newServer()
+
+	if _, err := handleTestInboundMessage(t, "raw/receipt-list-1.eml"); err != nil {
+		t.Fatalf("expected first inbound handling to succeed, got error: %v", err)
+	}
+
+	if err := runtimeStore.SaveInboundReceipt(context.Background(), inbound.DurableReceiptRequest{
+		SMTPTransactionID:   "smtp-test-session-2",
+		OrganizationID:      "org-local",
+		AgentID:             "agent-local",
+		InboxID:             "inbox-local",
+		EnvelopeSender:      "sender2@example.com",
+		EnvelopeRecipients:  []string{"agent@localhost"},
+		RawMessageObjectKey: "raw/receipt-list-2.eml",
+		ReceivedAt:          time.Date(2026, 4, 4, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("expected second inbound receipt seed to succeed, got error: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/inbound/receipts/list?limit=1", nil)
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected inbound receipts endpoint to succeed, got %d", recorder.Code)
+	}
+
+	var response []map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("expected receipt list response json, got error: %v", err)
+	}
+
+	if len(response) != 1 || response[0]["raw_message_object_key"] != "raw/receipt-list-2.eml" {
+		t.Fatalf("expected limited most-recent inbound receipt list, got %#v", response)
 	}
 }
 
