@@ -159,3 +159,7 @@ The first Postgres schema for the V0 core loop lives at:
 Schema notes are documented in:
 
 - `docs/storage/v0-schema.md`
+
+Current launch-gap checklist:
+
+- [`docs/plans/v0-remaining-checklist.md`](/home/fayeed/dev/agent-layer/docs/plans/v0-remaining-checklist.md)
