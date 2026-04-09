@@ -42,6 +42,8 @@ Helper files in the repo:
 - [`compose.yaml`](/home/fayeed/dev/agent-layer/compose.yaml)
 - [`.env.example`](/home/fayeed/dev/agent-layer/.env.example)
 - [`Makefile`](/home/fayeed/dev/agent-layer/Makefile)
+- [`scripts/bootstrap_local_runtime.sh`](/home/fayeed/dev/agent-layer/scripts/bootstrap_local_runtime.sh)
+- [`scripts/show_local_runtime.sh`](/home/fayeed/dev/agent-layer/scripts/show_local_runtime.sh)
 
 ## Postgres Mode
 
@@ -94,6 +96,13 @@ Inspect the current bootstrap config:
 
 ```bash
 curl http://localhost:8080/bootstrap
+```
+
+Or with the bundled helpers:
+
+```bash
+make bootstrap-local
+make show-local
 ```
 
 Inspect webhook delivery activity:
