@@ -19,6 +19,7 @@ type replyRequest struct {
 	AgentID          string `json:"agent_id"`
 	InboxID          string `json:"inbox_id"`
 	ContactID        string `json:"contact_id"`
+	IdempotencyKey   string `json:"idempotency_key"`
 	ReplyToMessageID string `json:"reply_to_message_id"`
 	BodyText         string `json:"body_text"`
 	ObjectKey        string `json:"object_key"`
@@ -64,6 +65,9 @@ func (h ReplyHandler) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		http.Error(writer, "object_key is required", http.StatusBadRequest)
 		return
 	}
+	if strings.TrimSpace(payload.IdempotencyKey) == "" {
+		payload.IdempotencyKey = strings.TrimSpace(request.Header.Get("Idempotency-Key"))
+	}
 
 	result, err := h.service.SendReply(request.Context(), outbound.SendReplyInput{
 		Organization: domain.Organization{ID: payload.OrganizationID},
@@ -73,9 +77,10 @@ func (h ReplyHandler) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		ReplyToMessage: domain.Message{
 			ID: payload.ReplyToMessageID,
 		},
-		Contact:   domain.Contact{ID: payload.ContactID},
-		BodyText:  payload.BodyText,
-		ObjectKey: payload.ObjectKey,
+		Contact:        domain.Contact{ID: payload.ContactID},
+		BodyText:       payload.BodyText,
+		ObjectKey:      payload.ObjectKey,
+		IdempotencyKey: payload.IdempotencyKey,
 	})
 	if err != nil {
 		writeLookupError(writer, err, "reply context not found", "failed to send reply")

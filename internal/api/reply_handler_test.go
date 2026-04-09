@@ -37,6 +37,7 @@ func TestReplyHandlerPostsThreadReply(t *testing.T) {
 		"agent_id":"agent-123",
 		"inbox_id":"inbox-123",
 		"contact_id":"contact-123",
+		"idempotency_key":"reply-req-123",
 		"reply_to_message_id":"message-100",
 		"body_text":"Thanks for reaching out.",
 		"object_key":"outbound/reply-123.eml"
@@ -58,6 +59,9 @@ func TestReplyHandlerPostsThreadReply(t *testing.T) {
 	if service.input.BodyText != "Thanks for reaching out." {
 		t.Fatalf("expected body text from request, got %#v", service.input)
 	}
+	if service.input.IdempotencyKey != "reply-req-123" {
+		t.Fatalf("expected idempotency key from request, got %#v", service.input)
+	}
 
 	var response replyResponse
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
@@ -70,6 +74,29 @@ func TestReplyHandlerPostsThreadReply(t *testing.T) {
 
 	if response.ProviderMessageID != "ses-123" {
 		t.Fatalf("expected provider message id in response, got %#v", response)
+	}
+}
+
+func TestReplyHandlerUsesIdempotencyHeaderFallback(t *testing.T) {
+	service := &replyServiceStub{
+		result: outbound.SendReplyResult{
+			Message: domain.Message{ID: "message-123", ThreadID: "thread-123"},
+		},
+	}
+	handler := NewReplyHandler(service)
+
+	request := httptest.NewRequest(http.MethodPost, "/threads/thread-123/reply", bytes.NewBufferString(`{
+		"reply_to_message_id":"message-100",
+		"body_text":"Thanks for reaching out.",
+		"object_key":"outbound/reply-123.eml"
+	}`))
+	request.Header.Set("Idempotency-Key", "reply-header-123")
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	if service.input.IdempotencyKey != "reply-header-123" {
+		t.Fatalf("expected idempotency key from header fallback, got %#v", service.input)
 	}
 }
 

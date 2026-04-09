@@ -78,6 +78,12 @@ CREATE TABLE messages (
     created_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE reply_submissions (
+    submission_key TEXT PRIMARY KEY,
+    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE TABLE message_attachments (
     id TEXT PRIMARY KEY,
     message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
@@ -173,6 +179,9 @@ CREATE UNIQUE INDEX messages_inbox_message_id_header_idx
 
 CREATE INDEX messages_thread_created_at_idx
     ON messages(thread_id, created_at DESC);
+
+CREATE INDEX reply_submissions_message_id_idx
+    ON reply_submissions(message_id);
 
 CREATE INDEX threads_subject_recent_idx
     ON threads(organization_id, inbox_id, contact_id, subject_normalized, last_activity_at DESC);

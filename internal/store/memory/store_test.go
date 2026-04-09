@@ -260,6 +260,31 @@ func TestStoreSupportsMemoryAndWebhookDeliveryState(t *testing.T) {
 	}
 }
 
+func TestStoreSupportsReplySubmissionLookup(t *testing.T) {
+	store := NewStore()
+
+	_, err := store.Create(context.Background(), domain.Message{
+		ID:       "message-123",
+		ThreadID: "thread-123",
+	})
+	if err != nil {
+		t.Fatalf("expected message create to succeed, got error: %v", err)
+	}
+
+	if err := store.SaveReplySubmission(context.Background(), "reply:key", "message-123"); err != nil {
+		t.Fatalf("expected reply submission save to succeed, got error: %v", err)
+	}
+
+	message, found, err := store.FindReplyBySubmissionKey(context.Background(), "reply:key")
+	if err != nil || !found {
+		t.Fatalf("expected reply submission lookup to succeed, got found=%v err=%v", found, err)
+	}
+
+	if message.ID != "message-123" {
+		t.Fatalf("expected stored reply submission message, got %#v", message)
+	}
+}
+
 func TestStoreListsWebhookDeliveriesByMostRecentUpdate(t *testing.T) {
 	store := NewStore()
 

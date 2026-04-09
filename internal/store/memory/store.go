@@ -35,6 +35,7 @@ type Store struct {
 	messagesByInboundKey  map[string]string
 	messagesByProviderID  map[string]domain.Message
 	messagesByThreadID    map[string][]string
+	replySubmissionsByKey map[string]string
 	memoriesByID          map[string]domain.ContactMemoryEntry
 	memoriesByContactID   map[string][]string
 	suppressionsByID      map[string]domain.SuppressedAddress
@@ -56,6 +57,7 @@ func NewStore() *Store {
 		messagesByInboundKey:  make(map[string]string),
 		messagesByProviderID:  make(map[string]domain.Message),
 		messagesByThreadID:    make(map[string][]string),
+		replySubmissionsByKey: make(map[string]string),
 		memoriesByID:          make(map[string]domain.ContactMemoryEntry),
 		memoriesByContactID:   make(map[string][]string),
 		suppressionsByID:      make(map[string]domain.SuppressedAddress),
@@ -357,6 +359,24 @@ func (s *Store) GetMessageByID(_ context.Context, messageID string) (domain.Mess
 		return domain.Message{}, fmt.Errorf("%w: message", domain.ErrNotFound)
 	}
 	return message, nil
+}
+
+func (s *Store) SaveReplySubmission(_ context.Context, submissionKey, messageID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.replySubmissionsByKey[submissionKey] = messageID
+	return nil
+}
+
+func (s *Store) FindReplyBySubmissionKey(_ context.Context, submissionKey string) (domain.Message, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	messageID, ok := s.replySubmissionsByKey[submissionKey]
+	if !ok {
+		return domain.Message{}, false, nil
+	}
+	message, ok := s.messagesByID[messageID]
+	return message, ok, nil
 }
 
 func (s *Store) CreateMemory(_ context.Context, entry domain.ContactMemoryEntry) (domain.ContactMemoryEntry, error) {

@@ -1099,6 +1099,58 @@ func TestReplyEndpointSendsReplyIntegration(t *testing.T) {
 	}
 }
 
+func TestReplyEndpointReusesExistingReplyForIdempotencyKey(t *testing.T) {
+	runtimeStore = newRuntimeStore()
+	server := newServer()
+	seedReplyRuntimeState(t)
+
+	body := `{
+		"idempotency_key":"reply-retry-123",
+		"reply_to_message_id":"message-inbound-123",
+		"body_text":"Thanks for reaching out.",
+		"object_key":"outbound/reply-http-123.eml"
+	}`
+
+	firstRequest := httptest.NewRequest(http.MethodPost, "/threads/thread-123/reply", bytes.NewBufferString(body))
+	firstRecorder := httptest.NewRecorder()
+	server.ServeHTTP(firstRecorder, firstRequest)
+
+	if firstRecorder.Code != http.StatusAccepted {
+		t.Fatalf("expected first reply endpoint request to succeed, got %d", firstRecorder.Code)
+	}
+
+	var firstResponse map[string]any
+	if err := json.Unmarshal(firstRecorder.Body.Bytes(), &firstResponse); err != nil {
+		t.Fatalf("expected first reply response json, got error: %v", err)
+	}
+
+	secondRequest := httptest.NewRequest(http.MethodPost, "/threads/thread-123/reply", bytes.NewBufferString(body))
+	secondRecorder := httptest.NewRecorder()
+	server.ServeHTTP(secondRecorder, secondRequest)
+
+	if secondRecorder.Code != http.StatusAccepted {
+		t.Fatalf("expected second reply endpoint request to succeed, got %d", secondRecorder.Code)
+	}
+
+	var secondResponse map[string]any
+	if err := json.Unmarshal(secondRecorder.Body.Bytes(), &secondResponse); err != nil {
+		t.Fatalf("expected second reply response json, got error: %v", err)
+	}
+
+	if firstResponse["message_id"] != secondResponse["message_id"] {
+		t.Fatalf("expected idempotent retry to reuse the same message, got first=%#v second=%#v", firstResponse, secondResponse)
+	}
+
+	messages, err := runtimeStore.ListByThreadID(context.Background(), "thread-123", 10)
+	if err != nil {
+		t.Fatalf("expected thread message list to succeed, got error: %v", err)
+	}
+
+	if len(messages) != 2 {
+		t.Fatalf("expected one inbound and one reply after idempotent retry, got %#v", messages)
+	}
+}
+
 func TestRunServersStartsHTTPAndSMTP(t *testing.T) {
 	httpServer := &serveStub{err: errors.New("http stopped"), started: make(chan struct{})}
 	smtpServer := &serveStub{err: errors.New("smtp stopped"), started: make(chan struct{})}

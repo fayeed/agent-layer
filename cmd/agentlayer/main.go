@@ -15,10 +15,12 @@ import (
 	"github.com/agentlayer/agentlayer/internal/api"
 	"github.com/agentlayer/agentlayer/internal/app"
 	"github.com/agentlayer/agentlayer/internal/contacts"
+	"github.com/agentlayer/agentlayer/internal/core"
 	"github.com/agentlayer/agentlayer/internal/domain"
 	"github.com/agentlayer/agentlayer/internal/inbound"
 	"github.com/agentlayer/agentlayer/internal/outbound"
 	"github.com/agentlayer/agentlayer/internal/parser"
+	"github.com/agentlayer/agentlayer/internal/platform/idempotency"
 	devprovider "github.com/agentlayer/agentlayer/internal/providers/dev"
 	sesprovider "github.com/agentlayer/agentlayer/internal/providers/ses"
 	"github.com/agentlayer/agentlayer/internal/smtpedge"
@@ -437,6 +439,7 @@ func newEmailProvider() outbound.EmailProvider {
 func newReplyHandlerService() api.ReplyService {
 	return replyServiceAdapter{
 		service:  newReplyService(),
+		store:    runtimeStore,
 		orgs:     runtimeStore,
 		agents:   runtimeStore,
 		inboxes:  runtimeStore,
@@ -614,6 +617,7 @@ type bootstrapReadServiceAdapter struct{ service app.BootstrapReadService }
 
 type replyServiceAdapter struct {
 	service  outbound.Service
+	store    appStore
 	orgs     organizationGetter
 	agents   agentGetter
 	inboxes  inboxGetter
@@ -716,6 +720,28 @@ func (a bootstrapReadServiceAdapter) GetBootstrap(ctx context.Context) (api.Boot
 }
 
 func (a replyServiceAdapter) SendReply(ctx context.Context, input outbound.SendReplyInput) (outbound.SendReplyResult, error) {
+	if input.IdempotencyKey != "" {
+		replyKey := idempotency.ReplySubmissionKey(input.Thread.ID, input.IdempotencyKey)
+		existing, ok, err := a.store.FindReplyBySubmissionKey(ctx, replyKey)
+		if err != nil {
+			return outbound.SendReplyResult{}, err
+		}
+		if ok {
+			thread, err := a.threads.GetByID(ctx, input.Thread.ID)
+			if err != nil {
+				return outbound.SendReplyResult{}, err
+			}
+			return outbound.SendReplyResult{
+				Thread:  thread,
+				Message: existing,
+				SendResult: core.SendResult{
+					ProviderMessageID: existing.ProviderMessageID,
+					AcceptedAt:        existing.SentAt,
+				},
+			}, nil
+		}
+	}
+
 	organizationID := input.Organization.ID
 	if organizationID == "" {
 		organizationID = "org-local"
@@ -763,7 +789,7 @@ func (a replyServiceAdapter) SendReply(ctx context.Context, input outbound.SendR
 		return outbound.SendReplyResult{}, err
 	}
 
-	return a.service.SendReply(ctx, outbound.SendReplyInput{
+	result, err := a.service.SendReply(ctx, outbound.SendReplyInput{
 		Organization:   organization,
 		Agent:          agent,
 		Inbox:          inbox,
@@ -772,7 +798,20 @@ func (a replyServiceAdapter) SendReply(ctx context.Context, input outbound.SendR
 		Contact:        contact,
 		BodyText:       input.BodyText,
 		ObjectKey:      input.ObjectKey,
+		IdempotencyKey: input.IdempotencyKey,
 	})
+	if err != nil {
+		return outbound.SendReplyResult{}, err
+	}
+
+	if input.IdempotencyKey != "" {
+		replyKey := idempotency.ReplySubmissionKey(input.Thread.ID, input.IdempotencyKey)
+		if err := a.store.SaveReplySubmission(ctx, replyKey, result.Message.ID); err != nil {
+			return outbound.SendReplyResult{}, err
+		}
+	}
+
+	return result, nil
 }
 
 func (a threadEscalationServiceAdapter) EscalateThread(ctx context.Context, threadID, reason string) (domain.Thread, error) {

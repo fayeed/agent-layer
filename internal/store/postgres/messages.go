@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/agentlayer/agentlayer/internal/domain"
 	"github.com/agentlayer/agentlayer/internal/store"
@@ -138,6 +139,36 @@ func (s MessageStore) FindByProviderMessageID(ctx context.Context, providerMessa
 		if errors.Is(err, sql.ErrNoRows) {
 			return domain.Message{}, false, nil
 		}
+		return domain.Message{}, false, err
+	}
+	return message, true, nil
+}
+
+func (s MessageStore) SaveReplySubmission(ctx context.Context, submissionKey, messageID string, createdAt time.Time) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO reply_submissions (submission_key, message_id, created_at)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (submission_key) DO UPDATE
+		SET message_id = EXCLUDED.message_id
+	`, submissionKey, messageID, createdAt)
+	return err
+}
+
+func (s MessageStore) FindReplyBySubmissionKey(ctx context.Context, submissionKey string) (domain.Message, bool, error) {
+	var messageID string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT message_id
+		FROM reply_submissions
+		WHERE submission_key = $1
+	`, submissionKey).Scan(&messageID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.Message{}, false, nil
+		}
+		return domain.Message{}, false, err
+	}
+	message, err := s.GetMessageByID(ctx, messageID)
+	if err != nil {
 		return domain.Message{}, false, err
 	}
 	return message, true, nil

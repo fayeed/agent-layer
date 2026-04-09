@@ -219,6 +219,55 @@ func TestMessageStoreCreatesSavesGetsAndFindsMessages(t *testing.T) {
 	if thread.ID != message.ThreadID {
 		t.Fatalf("expected thread-by-message result, got %#v", thread)
 	}
+
+	mock.ExpectExec(regexp.QuoteMeta(`
+		INSERT INTO reply_submissions (submission_key, message_id, created_at)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (submission_key) DO UPDATE
+		SET message_id = EXCLUDED.message_id
+	`)).
+		WithArgs("reply:key", message.ID, message.CreatedAt).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	mock.ExpectQuery(regexp.QuoteMeta(`
+		SELECT message_id
+		FROM reply_submissions
+		WHERE submission_key = $1
+	`)).
+		WithArgs("reply:key").
+		WillReturnRows(sqlmock.NewRows([]string{"message_id"}).AddRow(message.ID))
+
+	mock.ExpectQuery(regexp.QuoteMeta(`
+		SELECT id, organization_id, thread_id, inbox_id, contact_id, direction, subject,
+		       subject_normalized, message_id_header, in_reply_to, references_headers,
+		       text_body, html_body, raw_mime_object_key, provider_message_id,
+		       delivery_state, sent_at, delivered_at, bounced_at, created_at
+		FROM messages
+		WHERE id = $1
+	`)).
+		WithArgs(message.ID).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "organization_id", "thread_id", "inbox_id", "contact_id", "direction", "subject",
+			"subject_normalized", "message_id_header", "in_reply_to", "references_headers",
+			"text_body", "html_body", "raw_mime_object_key", "provider_message_id",
+			"delivery_state", "sent_at", "delivered_at", "bounced_at", "created_at",
+		}).AddRow(
+			message.ID, message.OrganizationID, message.ThreadID, message.InboxID, message.ContactID, string(message.Direction),
+			message.Subject, message.SubjectNormalized, message.MessageIDHeader, message.InReplyTo, `["<root@example.com>"]`,
+			message.TextBody, message.HTMLBody, message.RawMIMEObjectKey, message.ProviderMessageID, message.DeliveryState,
+			nil, nil, nil, message.CreatedAt,
+		))
+
+	if err := store.SaveReplySubmission(context.Background(), "reply:key", message.ID, message.CreatedAt); err != nil {
+		t.Fatalf("expected reply submission save to succeed, got error: %v", err)
+	}
+	replyMessage, found, err := store.FindReplyBySubmissionKey(context.Background(), "reply:key")
+	if err != nil || !found {
+		t.Fatalf("expected reply submission lookup to succeed, got found=%v err=%v", found, err)
+	}
+	if replyMessage.ID != message.ID {
+		t.Fatalf("expected reply submission message, got %#v", replyMessage)
+	}
 }
 
 func TestMessageStoreMapsNotFound(t *testing.T) {

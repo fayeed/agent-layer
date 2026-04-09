@@ -35,6 +35,7 @@ type SendReplyInput struct {
 	Contact        domain.Contact
 	BodyText       string
 	ObjectKey      string
+	IdempotencyKey string
 }
 
 type SendReplyResult struct {

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/agentlayer/agentlayer/internal/domain"
 	"github.com/agentlayer/agentlayer/internal/inbound"
@@ -35,7 +36,9 @@ type appStore interface {
 	ListByThreadID(ctx context.Context, threadID string, limit int) ([]domain.Message, error)
 	FindByProviderMessageID(ctx context.Context, providerMessageID string) (domain.Message, bool, error)
 	FindInboundByHeader(ctx context.Context, inboxID, messageIDHeader string) (domain.Message, bool, error)
+	FindReplyBySubmissionKey(ctx context.Context, submissionKey string) (domain.Message, bool, error)
 	GetMessageByID(ctx context.Context, messageID string) (domain.Message, error)
+	SaveReplySubmission(ctx context.Context, submissionKey, messageID string) error
 	CreateMemory(ctx context.Context, entry domain.ContactMemoryEntry) (domain.ContactMemoryEntry, error)
 	ListMemoryByContactID(ctx context.Context, contactID string, limit int) ([]domain.ContactMemoryEntry, error)
 	SaveSuppression(ctx context.Context, record domain.SuppressedAddress) (domain.SuppressedAddress, error)
@@ -146,8 +149,14 @@ func (s *postgresRuntimeStore) FindByProviderMessageID(ctx context.Context, prov
 func (s *postgresRuntimeStore) FindInboundByHeader(ctx context.Context, inboxID, messageIDHeader string) (domain.Message, bool, error) {
 	return s.messages.FindInboundByHeader(ctx, inboxID, messageIDHeader)
 }
+func (s *postgresRuntimeStore) FindReplyBySubmissionKey(ctx context.Context, submissionKey string) (domain.Message, bool, error) {
+	return s.messages.FindReplyBySubmissionKey(ctx, submissionKey)
+}
 func (s *postgresRuntimeStore) GetMessageByID(ctx context.Context, messageID string) (domain.Message, error) {
 	return s.messages.GetMessageByID(ctx, messageID)
+}
+func (s *postgresRuntimeStore) SaveReplySubmission(ctx context.Context, submissionKey, messageID string) error {
+	return s.messages.SaveReplySubmission(ctx, submissionKey, messageID, time.Now().UTC())
 }
 func (s *postgresRuntimeStore) CreateMemory(ctx context.Context, entry domain.ContactMemoryEntry) (domain.ContactMemoryEntry, error) {
 	contact, err := s.contacts.GetContactByID(ctx, entry.ContactID)
