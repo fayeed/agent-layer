@@ -41,3 +41,27 @@ type ContactMemoryStore struct {
 func NewContactMemoryStore(db *sql.DB) ContactMemoryStore {
 	return ContactMemoryStore{db: db}
 }
+
+type ContactStore struct {
+	db *sql.DB
+}
+
+func NewContactStore(db *sql.DB) ContactStore {
+	return ContactStore{db: db}
+}
+
+type ThreadStore struct {
+	db *sql.DB
+}
+
+func NewThreadStore(db *sql.DB) ThreadStore {
+	return ThreadStore{db: db}
+}
+
+type MessageStore struct {
+	db *sql.DB
+}
+
+func NewMessageStore(db *sql.DB) MessageStore {
+	return MessageStore{db: db}
+}
