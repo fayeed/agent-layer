@@ -48,6 +48,7 @@ func TestNewServerRegistersV0RouteShapes(t *testing.T) {
 	}{
 		{method: http.MethodGet, path: "/bootstrap"},
 		{method: http.MethodPost, path: "/bootstrap"},
+		{method: http.MethodPost, path: "/inbound/reprocess"},
 		{method: http.MethodGet, path: "/webhooks/deliveries"},
 		{method: http.MethodPost, path: "/threads/thread-123/reply"},
 		{method: http.MethodPost, path: "/threads/thread-123/escalate"},
@@ -106,6 +107,7 @@ func TestNewServerWiresRemainingHandlers(t *testing.T) {
 	}{
 		{method: http.MethodGet, path: "/bootstrap", want: http.StatusOK},
 		{method: http.MethodPost, path: "/bootstrap", body: "{}", want: http.StatusBadRequest},
+		{method: http.MethodPost, path: "/inbound/reprocess", body: "{}", want: http.StatusBadRequest},
 		{method: http.MethodGet, path: "/webhooks/deliveries", want: http.StatusOK},
 		{method: http.MethodGet, path: "/webhooks/deliveries/delivery-123", want: http.StatusNotFound},
 		{method: http.MethodPost, path: "/webhooks/deliveries/delivery-123/replay", want: http.StatusNotFound},
@@ -585,6 +587,47 @@ func TestBootstrapAndInboundFlowDeduplicatesRepeatedInboundMessage(t *testing.T)
 	}
 }
 
+func TestInboundReprocessEndpointReusesStoredReceiptWithoutRedeliveringWebhook(t *testing.T) {
+	runtimeStore = newRuntimeStore()
+	receivedCh, webhookServer := newWebhookCaptureServer()
+	defer webhookServer.Close()
+
+	server := newServer()
+	bootstrapLocalRuntime(t, server, webhookServer.URL, "active")
+
+	first, err := handleTestInboundMessage(t, "raw/reprocess-message.eml")
+	if err != nil {
+		t.Fatalf("expected initial inbound handling to succeed, got error: %v", err)
+	}
+
+	_ = waitForWebhook(t, receivedCh)
+
+	request := httptest.NewRequest(http.MethodPost, "/inbound/reprocess", bytes.NewBufferString(`{
+		"object_key":"raw/reprocess-message.eml"
+	}`))
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("expected reprocess endpoint to succeed, got %d", recorder.Code)
+	}
+
+	var response map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("expected reprocess response json, got error: %v", err)
+	}
+
+	if response["message_id"] != first.Message.ID || response["duplicate"] != true {
+		t.Fatalf("expected duplicate reprocess response, got %#v", response)
+	}
+
+	select {
+	case duplicateWebhook := <-receivedCh:
+		t.Fatalf("expected reprocess to skip webhook redelivery, got %#v", duplicateWebhook)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
 func TestWebhookReplayFlowReplaysStoredDelivery(t *testing.T) {
 	runtimeStore = newRuntimeStore()
 	receivedCh, webhookServer := newWebhookCaptureServer()
@@ -1011,15 +1054,30 @@ func handleTestInboundMessage(t *testing.T, objectKey string) (inbound.HandleRes
 		t.Fatalf("expected raw message seed to succeed, got error: %v", err)
 	}
 
+	receipt := inbound.DurableReceiptRequest{
+		SMTPTransactionID:   "smtp-test-session",
+		OrganizationID:      "org-local",
+		AgentID:             "agent-local",
+		InboxID:             "inbox-local",
+		EnvelopeSender:      "sender@example.com",
+		EnvelopeRecipients:  []string{"agent@localhost"},
+		RawMessageObjectKey: objectKey,
+		ReceivedAt:          time.Date(2026, 4, 3, 23, 0, 0, 0, time.UTC),
+	}
+	if err := runtimeStore.SaveInboundReceipt(context.Background(), receipt); err != nil {
+		t.Fatalf("expected inbound receipt seed to succeed, got error: %v", err)
+	}
+
 	return newInboundService().HandleStoredMessage(context.Background(), core.StoredInboundMessage{
 		Receipt: core.InboundReceipt{
-			OrganizationID:      "org-local",
-			AgentID:             "agent-local",
-			InboxID:             "inbox-local",
-			EnvelopeSender:      "sender@example.com",
-			EnvelopeRecipients:  []string{"agent@localhost"},
-			RawMessageObjectKey: objectKey,
-			ReceivedAt:          time.Date(2026, 4, 3, 23, 0, 0, 0, time.UTC),
+			SMTPTransactionID:   receipt.SMTPTransactionID,
+			OrganizationID:      receipt.OrganizationID,
+			AgentID:             receipt.AgentID,
+			InboxID:             receipt.InboxID,
+			EnvelopeSender:      receipt.EnvelopeSender,
+			EnvelopeRecipients:  receipt.EnvelopeRecipients,
+			RawMessageObjectKey: receipt.RawMessageObjectKey,
+			ReceivedAt:          receipt.ReceivedAt,
 		},
 	})
 }

@@ -47,6 +47,7 @@ func newServer() http.Handler {
 	mux.HandleFunc("GET /healthz", handleHealth)
 	mux.Handle("GET /bootstrap", api.NewBootstrapReadHandler(newBootstrapReadHandlerService()))
 	mux.Handle("POST /bootstrap", api.NewBootstrapHandler(newBootstrapHandlerService()))
+	mux.Handle("POST /inbound/reprocess", api.NewInboundReprocessHandler(newInboundReprocessHandlerService()))
 	mux.Handle("GET /webhooks/deliveries", api.NewWebhookDeliveriesHandler(newWebhookDeliveriesHandlerService()))
 	mux.Handle("GET /webhooks/deliveries/{deliveryID}", api.NewWebhookDeliveryHandler(newWebhookDeliveryHandlerService()))
 	mux.Handle("POST /webhooks/deliveries/{deliveryID}/replay", api.NewWebhookReplayHandler(newWebhookReplayHandlerService()))
@@ -218,6 +219,14 @@ func newInboundProcessor() inbound.Processor {
 
 func newThreadReadService() app.ThreadReadService {
 	return app.NewThreadReadService(runtimeStore)
+}
+
+func newInboundReprocessService() app.InboundReprocessService {
+	return app.NewInboundReprocessService(runtimeStore, newInboundService())
+}
+
+func newInboundReprocessHandlerService() api.InboundReprocessService {
+	return inboundReprocessServiceAdapter{service: newInboundReprocessService()}
 }
 
 func newThreadMessagesReadService() app.ThreadMessagesReadService {
@@ -514,6 +523,10 @@ type webhookDeliveryReadServiceAdapter struct {
 
 type webhookReplayServiceAdapter struct{ service webhooks.ReplayService }
 
+type inboundReprocessServiceAdapter struct {
+	service app.InboundReprocessService
+}
+
 func (a bootstrapServiceAdapter) BootstrapLocal(ctx context.Context, input api.BootstrapInput) (api.BootstrapResult, error) {
 	result, err := a.service.BootstrapLocal(ctx, app.BootstrapInput{
 		OrganizationName: input.OrganizationName,
@@ -535,6 +548,19 @@ func (a bootstrapServiceAdapter) BootstrapLocal(ctx context.Context, input api.B
 		InboxID:        result.Inbox.ID,
 		WebhookURL:     result.Agent.WebhookURL,
 		InboxAddress:   result.Inbox.EmailAddress,
+	}, nil
+}
+
+func (a inboundReprocessServiceAdapter) ReprocessByObjectKey(ctx context.Context, objectKey string) (api.InboundReprocessResult, error) {
+	result, err := a.service.ReprocessByObjectKey(ctx, objectKey)
+	if err != nil {
+		return api.InboundReprocessResult{}, err
+	}
+
+	return api.InboundReprocessResult{
+		MessageID: result.Message.ID,
+		ThreadID:  result.Thread.ID,
+		Duplicate: result.Duplicate,
 	}, nil
 }
 
