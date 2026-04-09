@@ -42,6 +42,7 @@ Helper files in the repo:
 - [`compose.yaml`](/home/fayeed/dev/agent-layer/compose.yaml)
 - [`.env.example`](/home/fayeed/dev/agent-layer/.env.example)
 - [`Makefile`](/home/fayeed/dev/agent-layer/Makefile)
+- [`cmd/agentlayerctl/main.go`](/home/fayeed/dev/agent-layer/cmd/agentlayerctl/main.go)
 - [`scripts/bootstrap_local_runtime.sh`](/home/fayeed/dev/agent-layer/scripts/bootstrap_local_runtime.sh)
 - [`scripts/show_local_runtime.sh`](/home/fayeed/dev/agent-layer/scripts/show_local_runtime.sh)
 
@@ -103,6 +104,7 @@ Or with the bundled helpers:
 ```bash
 make bootstrap-local
 make show-local
+make send-sample
 ```
 
 Inspect webhook delivery activity:

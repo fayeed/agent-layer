@@ -1,4 +1,4 @@
-.PHONY: postgres-up postgres-down run run-postgres bootstrap-local show-local test
+.PHONY: postgres-up postgres-down run run-postgres bootstrap-local show-local send-sample test
 
 postgres-up:
 	docker compose up -d postgres
@@ -13,10 +13,13 @@ run-postgres:
 	set -a && . ./.env.example && set +a && go run ./cmd/agentlayer
 
 bootstrap-local:
-	./scripts/bootstrap_local_runtime.sh
+	go run ./cmd/agentlayerctl bootstrap
 
 show-local:
-	./scripts/show_local_runtime.sh
+	go run ./cmd/agentlayerctl show
+
+send-sample:
+	go run ./cmd/agentlayerctl send-sample
 
 test:
 	go test ./...
