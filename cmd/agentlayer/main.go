@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log"
 	"net/http"
@@ -17,10 +18,12 @@ import (
 	"github.com/agentlayer/agentlayer/internal/parser"
 	devprovider "github.com/agentlayer/agentlayer/internal/providers/dev"
 	"github.com/agentlayer/agentlayer/internal/smtpedge"
+	"github.com/agentlayer/agentlayer/internal/store/blobfs"
 	memorystore "github.com/agentlayer/agentlayer/internal/store/memory"
 	"github.com/agentlayer/agentlayer/internal/threading"
 	"github.com/agentlayer/agentlayer/internal/webhooks"
 	smtp "github.com/emersion/go-smtp"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 var runtimeStore = newRuntimeStore()
@@ -101,8 +104,44 @@ func webhookSecret() string {
 	return os.Getenv("AGENTLAYER_WEBHOOK_SECRET")
 }
 
-func newRuntimeStore() *memorystore.Store {
+func databaseURL() string {
+	return os.Getenv("AGENTLAYER_DATABASE_URL")
+}
+
+func rawDataDir() string {
+	if value := os.Getenv("AGENTLAYER_RAW_DATA_DIR"); value != "" {
+		return value
+	}
+	return ".agentlayer-data/raw"
+}
+
+func newRuntimeStore() appStore {
+	if databaseURL() != "" {
+		db, err := sql.Open("pgx", databaseURL())
+		if err != nil {
+			panic(err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := db.PingContext(ctx); err != nil {
+			_ = db.Close()
+			panic(err)
+		}
+		store := newPostgresRuntimeStore(db, blobfs.NewStore(rawDataDir()))
+		seedLocalRuntime(store)
+		return store
+	}
+
 	store := memorystore.NewStore()
+	seedLocalRuntime(store)
+	return store
+}
+
+func seedLocalRuntime(store interface {
+	SaveOrganization(ctx context.Context, organization domain.Organization) (domain.Organization, error)
+	SaveAgent(ctx context.Context, agent domain.Agent) (domain.Agent, error)
+	SaveInbox(ctx context.Context, inbox domain.Inbox) (domain.Inbox, error)
+}) {
 	_, _ = store.SaveOrganization(context.Background(), domain.Organization{
 		ID:   "org-local",
 		Name: "AgentLayer Local",
@@ -113,7 +152,7 @@ func newRuntimeStore() *memorystore.Store {
 		Name:           "Local Agent",
 		Status:         domain.AgentStatusActive,
 	})
-	store.SeedInbox(domain.Inbox{
+	_, _ = store.SaveInbox(context.Background(), domain.Inbox{
 		ID:             "inbox-local",
 		OrganizationID: "org-local",
 		AgentID:        "agent-local",
@@ -121,7 +160,6 @@ func newRuntimeStore() *memorystore.Store {
 		Domain:         "localhost",
 		DisplayName:    "AgentLayer Local",
 	})
-	return store
 }
 
 func newSMTPServer() *smtp.Server {
@@ -504,7 +542,7 @@ func (notImplementedSuppressionRepository) Save(context.Context, domain.Suppress
 	return domain.SuppressedAddress{}, errors.New("suppression repository not implemented")
 }
 
-type contactGetterAdapter struct{ store *memorystore.Store }
+type contactGetterAdapter struct{ store appStore }
 
 type bootstrapServiceAdapter struct{ service app.BootstrapService }
 
@@ -712,37 +750,37 @@ func (a contactGetterAdapter) GetByID(ctx context.Context, contactID string) (do
 	return a.store.GetContactByID(ctx, contactID)
 }
 
-type contactMemoryWriterAdapter struct{ store *memorystore.Store }
+type contactMemoryWriterAdapter struct{ store appStore }
 
 func (a contactMemoryWriterAdapter) Create(ctx context.Context, entry domain.ContactMemoryEntry) (domain.ContactMemoryEntry, error) {
 	return a.store.CreateMemory(ctx, entry)
 }
 
-type contactMemoryListerAdapter struct{ store *memorystore.Store }
+type contactMemoryListerAdapter struct{ store appStore }
 
 func (a contactMemoryListerAdapter) ListMemoryByContactID(ctx context.Context, contactID string, limit int) ([]domain.ContactMemoryEntry, error) {
 	return a.store.ListMemoryByContactID(ctx, contactID, limit)
 }
 
-type messageStatusRepositoryAdapter struct{ store *memorystore.Store }
+type messageStatusRepositoryAdapter struct{ store appStore }
 
 func (a messageStatusRepositoryAdapter) Save(ctx context.Context, message domain.Message) (domain.Message, error) {
 	return a.store.SaveMessage(ctx, message)
 }
 
-type suppressionRepositoryAdapter struct{ store *memorystore.Store }
+type suppressionRepositoryAdapter struct{ store appStore }
 
 func (a suppressionRepositoryAdapter) Save(ctx context.Context, record domain.SuppressedAddress) (domain.SuppressedAddress, error) {
 	return a.store.SaveSuppression(ctx, record)
 }
 
-type webhookDeliveryRepositoryAdapter struct{ store *memorystore.Store }
+type webhookDeliveryRepositoryAdapter struct{ store appStore }
 
 func (a webhookDeliveryRepositoryAdapter) Save(ctx context.Context, delivery domain.WebhookDelivery) (domain.WebhookDelivery, error) {
 	return a.store.SaveWebhookDelivery(ctx, delivery)
 }
 
-type webhookDeliveryGetterAdapter struct{ store *memorystore.Store }
+type webhookDeliveryGetterAdapter struct{ store appStore }
 
 func (a webhookDeliveryGetterAdapter) GetWebhookDeliveryByID(ctx context.Context, deliveryID string) (domain.WebhookDelivery, error) {
 	return a.store.GetWebhookDeliveryByID(ctx, deliveryID)
@@ -776,7 +814,7 @@ type messageGetter interface {
 	GetMessageByID(ctx context.Context, messageID string) (domain.Message, error)
 }
 
-type messageGetterAdapter struct{ store *memorystore.Store }
+type messageGetterAdapter struct{ store appStore }
 
 func (a messageGetterAdapter) GetMessageByID(ctx context.Context, messageID string) (domain.Message, error) {
 	return a.store.GetMessageByID(ctx, messageID)
