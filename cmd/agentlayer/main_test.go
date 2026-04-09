@@ -39,6 +39,27 @@ func TestNewServerExposesHealthEndpoint(t *testing.T) {
 	}
 }
 
+func TestNewServerExposesReadinessEndpoint(t *testing.T) {
+	runtimeStore = newRuntimeStore()
+	server := newServer()
+	request := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	recorder := httptest.NewRecorder()
+
+	server.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected readiness endpoint to return 200, got %d", recorder.Code)
+	}
+
+	var response map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("expected readiness response json, got error: %v", err)
+	}
+	if response["ready"] != true {
+		t.Fatalf("expected readiness response body, got %#v", response)
+	}
+}
+
 func TestNewServerRegistersV0RouteShapes(t *testing.T) {
 	runtimeStore = newRuntimeStore()
 	server := newServer()
@@ -49,6 +70,7 @@ func TestNewServerRegistersV0RouteShapes(t *testing.T) {
 	}{
 		{method: http.MethodGet, path: "/bootstrap"},
 		{method: http.MethodPost, path: "/bootstrap"},
+		{method: http.MethodGet, path: "/readyz"},
 		{method: http.MethodGet, path: "/inbound/receipts/list"},
 		{method: http.MethodGet, path: "/inbound/receipts"},
 		{method: http.MethodPost, path: "/inbound/reprocess"},
@@ -111,6 +133,7 @@ func TestNewServerWiresRemainingHandlers(t *testing.T) {
 	}{
 		{method: http.MethodGet, path: "/bootstrap", want: http.StatusOK},
 		{method: http.MethodPost, path: "/bootstrap", body: "{}", want: http.StatusBadRequest},
+		{method: http.MethodGet, path: "/readyz", want: http.StatusOK},
 		{method: http.MethodGet, path: "/inbound/receipts/list", want: http.StatusOK},
 		{method: http.MethodGet, path: "/inbound/receipts", want: http.StatusBadRequest},
 		{method: http.MethodPost, path: "/inbound/reprocess", body: "{}", want: http.StatusBadRequest},

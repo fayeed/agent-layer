@@ -56,6 +56,7 @@ type serveServer interface {
 func newServer() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealth)
+	mux.Handle("GET /readyz", newReadinessHandler())
 	mux.Handle("GET /bootstrap", api.NewBootstrapReadHandler(newBootstrapReadHandlerService()))
 	mux.Handle("POST /bootstrap", api.NewBootstrapHandler(newBootstrapHandlerService()))
 	mux.Handle("GET /inbound/receipts/list", api.NewInboundReceiptsHandler(newInboundReceiptsHandlerService()))
