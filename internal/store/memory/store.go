@@ -214,6 +214,32 @@ func (s *Store) FindByMessageID(_ context.Context, messageID string) (domain.Thr
 	return domain.Thread{}, false, nil
 }
 
+func (s *Store) FindMostRecentBySubject(_ context.Context, organizationID, inboxID, contactID, subjectNormalized string) (domain.Thread, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var (
+		best      domain.Thread
+		bestFound bool
+	)
+
+	for _, thread := range s.threadsByID {
+		if thread.OrganizationID != organizationID || thread.InboxID != inboxID || thread.ContactID != contactID {
+			continue
+		}
+		if thread.SubjectNormalized != subjectNormalized {
+			continue
+		}
+
+		if !bestFound || thread.LastActivityAt.After(best.LastActivityAt) {
+			best = thread
+			bestFound = true
+		}
+	}
+
+	return best, bestFound, nil
+}
+
 func (s *Store) Create(_ context.Context, message domain.Message) (domain.Message, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
