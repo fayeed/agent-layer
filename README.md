@@ -78,6 +78,9 @@ Current local admin/runtime endpoints:
 - `GET /healthz`
 - `GET /bootstrap`
 - `POST /bootstrap`
+- `GET /inbound/receipts`
+- `GET /inbound/receipts/list`
+- `POST /inbound/reprocess`
 - `GET /webhooks/deliveries`
 - `GET /webhooks/deliveries/{deliveryID}`
 - `POST /webhooks/deliveries/{deliveryID}/replay`
@@ -88,3 +91,23 @@ Current local admin/runtime endpoints:
 - `GET /contacts/{contactID}`
 - `POST /contacts/{contactID}/memory`
 - `POST /provider/callbacks/outbound`
+
+Inbound receipt admin flow:
+
+```bash
+curl 'http://localhost:8080/inbound/receipts?object_key=raw/2026/04/09/inbox-local/example.eml'
+curl 'http://localhost:8080/inbound/receipts/list?limit=10'
+curl -X POST http://localhost:8080/inbound/reprocess \
+  -H 'Content-Type: application/json' \
+  -d '{"object_key":"raw/2026/04/09/inbox-local/example.eml"}'
+```
+
+## Schema
+
+The first Postgres schema for the V0 core loop lives at:
+
+- `db/migrations/0001_v0_core.sql`
+
+Schema notes are documented in:
+
+- `docs/storage/v0-schema.md`

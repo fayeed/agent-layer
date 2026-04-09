@@ -105,12 +105,27 @@ type ContactMemoryModel struct {
 	CreatedAt      time.Time
 }
 
+type InboundReceiptModel struct {
+	RawMessageObjectKey string
+	SMTPTransactionID   string
+	OrganizationID      string
+	AgentID             string
+	InboxID             string
+	EnvelopeSender      string
+	EnvelopeRecipients  []string
+	ReceivedAt          time.Time
+	CreatedAt           time.Time
+}
+
 type WebhookDeliveryModel struct {
 	ID             string
 	OrganizationID string
 	AgentID        string
 	EventType      string
 	EventID        string
+	RequestURL     string
+	RequestPayload []byte
+	RequestHeaders []byte
 	Status         string
 	AttemptCount   int
 	LastAttemptAt  time.Time
