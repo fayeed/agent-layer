@@ -19,6 +19,7 @@ import (
 	"github.com/agentlayer/agentlayer/internal/inbound"
 	"github.com/agentlayer/agentlayer/internal/outbound"
 	"github.com/agentlayer/agentlayer/internal/smtpedge"
+	"github.com/agentlayer/agentlayer/internal/webhooks"
 )
 
 func TestNewServerExposesHealthEndpoint(t *testing.T) {
@@ -52,6 +53,7 @@ func TestNewServerRegistersV0RouteShapes(t *testing.T) {
 		{method: http.MethodGet, path: "/inbound/receipts"},
 		{method: http.MethodPost, path: "/inbound/reprocess"},
 		{method: http.MethodGet, path: "/webhooks/deliveries"},
+		{method: http.MethodPost, path: "/webhooks/deliveries/retry"},
 		{method: http.MethodPost, path: "/threads/thread-123/reply"},
 		{method: http.MethodPost, path: "/threads/thread-123/escalate"},
 		{method: http.MethodGet, path: "/threads/thread-123/messages"},
@@ -113,6 +115,7 @@ func TestNewServerWiresRemainingHandlers(t *testing.T) {
 		{method: http.MethodGet, path: "/inbound/receipts", want: http.StatusBadRequest},
 		{method: http.MethodPost, path: "/inbound/reprocess", body: "{}", want: http.StatusBadRequest},
 		{method: http.MethodGet, path: "/webhooks/deliveries", want: http.StatusOK},
+		{method: http.MethodPost, path: "/webhooks/deliveries/retry", want: http.StatusAccepted},
 		{method: http.MethodGet, path: "/webhooks/deliveries/delivery-123", want: http.StatusNotFound},
 		{method: http.MethodPost, path: "/webhooks/deliveries/delivery-123/replay", want: http.StatusNotFound},
 		{method: http.MethodPost, path: "/threads/thread-123/reply", body: "{}", want: http.StatusBadRequest},
@@ -861,6 +864,92 @@ func TestWebhookDeliveryListEndpointHonorsLimitIntegration(t *testing.T) {
 
 	if len(response) != 1 || response[0]["id"] != "delivery-newer" {
 		t.Fatalf("expected limited recency-ordered response, got %#v", response)
+	}
+}
+
+func TestWebhookRetryEndpointReplaysDueDeliveriesIntegration(t *testing.T) {
+	runtimeStore = newRuntimeStore()
+	receivedCh, webhookServer := newWebhookCaptureServer()
+	defer webhookServer.Close()
+
+	server := newServer()
+	now := time.Now().UTC()
+
+	_, err := runtimeStore.SaveWebhookDelivery(context.Background(), domain.WebhookDelivery{
+		ID:             "delivery-due",
+		OrganizationID: "org-local",
+		AgentID:        "agent-local",
+		EventID:        "event-due",
+		EventType:      "message.received",
+		RequestURL:     webhookServer.URL,
+		RequestPayload: []byte(`{"event":"message.received","delivery":"due"}`),
+		RequestHeaders: map[string]string{"Content-Type": "application/json"},
+		Status:         webhooks.DeliveryStatusRetrying,
+		AttemptCount:   1,
+		LastAttemptAt:  now.Add(-2 * time.Minute),
+		NextAttemptAt:  now.Add(-1 * time.Minute),
+		CreatedAt:      now.Add(-5 * time.Minute),
+		UpdatedAt:      now.Add(-2 * time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("expected due webhook delivery save to succeed, got error: %v", err)
+	}
+
+	_, err = runtimeStore.SaveWebhookDelivery(context.Background(), domain.WebhookDelivery{
+		ID:             "delivery-later",
+		OrganizationID: "org-local",
+		AgentID:        "agent-local",
+		EventID:        "event-later",
+		EventType:      "message.received",
+		RequestURL:     webhookServer.URL,
+		RequestPayload: []byte(`{"event":"message.received","delivery":"later"}`),
+		RequestHeaders: map[string]string{"Content-Type": "application/json"},
+		Status:         webhooks.DeliveryStatusRetrying,
+		AttemptCount:   1,
+		LastAttemptAt:  now.Add(-1 * time.Minute),
+		NextAttemptAt:  now.Add(30 * time.Minute),
+		CreatedAt:      now.Add(-5 * time.Minute),
+		UpdatedAt:      now.Add(-1 * time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("expected future webhook delivery save to succeed, got error: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/webhooks/deliveries/retry?limit=10", nil)
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("expected webhook retry endpoint to succeed, got %d", recorder.Code)
+	}
+
+	var response map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("expected webhook retry json, got error: %v", err)
+	}
+	if response["attempted"] != float64(1) || response["succeeded"] != float64(1) || response["skipped"] != float64(1) {
+		t.Fatalf("expected retry sweep summary, got %#v", response)
+	}
+
+	delivered := waitForWebhook(t, receivedCh)
+	if string(delivered.Body) != `{"event":"message.received","delivery":"due"}` {
+		t.Fatalf("expected only due delivery to be replayed, got %s", string(delivered.Body))
+	}
+
+	updated, err := runtimeStore.GetWebhookDeliveryByID(context.Background(), "delivery-due")
+	if err != nil {
+		t.Fatalf("expected due delivery lookup to succeed, got error: %v", err)
+	}
+	if updated.Status != webhooks.DeliveryStatusSucceeded || updated.AttemptCount != 2 {
+		t.Fatalf("expected due delivery to be replayed and updated, got %#v", updated)
+	}
+
+	later, err := runtimeStore.GetWebhookDeliveryByID(context.Background(), "delivery-later")
+	if err != nil {
+		t.Fatalf("expected later delivery lookup to succeed, got error: %v", err)
+	}
+	if later.AttemptCount != 1 || later.Status != webhooks.DeliveryStatusRetrying {
+		t.Fatalf("expected later delivery to remain untouched, got %#v", later)
 	}
 }
 

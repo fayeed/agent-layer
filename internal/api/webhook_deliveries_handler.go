@@ -37,12 +37,13 @@ func (h WebhookDeliveriesHandler) ServeHTTP(writer http.ResponseWriter, request 
 	response := make([]webhookDeliveryResponse, 0, len(deliveries))
 	for _, delivery := range deliveries {
 		response = append(response, webhookDeliveryResponse{
-			ID:           delivery.ID,
-			EventID:      delivery.EventID,
-			EventType:    delivery.EventType,
-			Status:       delivery.Status,
-			AttemptCount: delivery.AttemptCount,
-			ResponseCode: delivery.ResponseCode,
+			ID:            delivery.ID,
+			EventID:       delivery.EventID,
+			EventType:     delivery.EventType,
+			Status:        delivery.Status,
+			AttemptCount:  delivery.AttemptCount,
+			ResponseCode:  delivery.ResponseCode,
+			NextAttemptAt: formatResponseTime(delivery.NextAttemptAt),
 		})
 	}
 

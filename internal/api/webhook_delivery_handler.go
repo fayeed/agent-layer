@@ -36,12 +36,13 @@ func (h WebhookDeliveryHandler) ServeHTTP(writer http.ResponseWriter, request *h
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(writer).Encode(webhookDeliveryResponse{
-		ID:           delivery.ID,
-		EventID:      delivery.EventID,
-		EventType:    delivery.EventType,
-		Status:       delivery.Status,
-		AttemptCount: delivery.AttemptCount,
-		ResponseCode: delivery.ResponseCode,
+		ID:            delivery.ID,
+		EventID:       delivery.EventID,
+		EventType:     delivery.EventType,
+		Status:        delivery.Status,
+		AttemptCount:  delivery.AttemptCount,
+		ResponseCode:  delivery.ResponseCode,
+		NextAttemptAt: formatResponseTime(delivery.NextAttemptAt),
 	})
 }
 

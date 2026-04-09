@@ -40,6 +40,9 @@ func TestRecorderMarksSuccessfulDelivery(t *testing.T) {
 	if repository.saved.Status != DeliveryStatusSucceeded {
 		t.Fatalf("expected successful status, got %#v", repository.saved)
 	}
+	if !repository.saved.NextAttemptAt.IsZero() {
+		t.Fatalf("expected no next attempt for success, got %#v", repository.saved)
+	}
 
 	if repository.saved.AttemptCount != 1 {
 		t.Fatalf("expected attempt count to increment, got %d", repository.saved.AttemptCount)
@@ -58,7 +61,7 @@ func TestRecorderMarksSuccessfulDelivery(t *testing.T) {
 	}
 }
 
-func TestRecorderMarksFailedDelivery(t *testing.T) {
+func TestRecorderSchedulesRetryingDelivery(t *testing.T) {
 	repository := &deliveryRepositoryStub{}
 	recorder := NewRecorder(repository)
 	at := time.Date(2026, 4, 3, 5, 5, 0, 0, time.UTC)
@@ -85,16 +88,50 @@ func TestRecorderMarksFailedDelivery(t *testing.T) {
 		t.Fatalf("expected record attempt to succeed, got error: %v", err)
 	}
 
-	if repository.saved.Status != DeliveryStatusFailed {
-		t.Fatalf("expected failed status, got %#v", repository.saved)
+	if repository.saved.Status != DeliveryStatusRetrying {
+		t.Fatalf("expected retrying status, got %#v", repository.saved)
 	}
 
 	if repository.saved.AttemptCount != 3 {
 		t.Fatalf("expected attempt count to increment, got %d", repository.saved.AttemptCount)
 	}
 
-	if record.Status != DeliveryStatusFailed {
-		t.Fatalf("expected returned status to be failed, got %q", record.Status)
+	if record.Status != DeliveryStatusRetrying {
+		t.Fatalf("expected returned status to be retrying, got %q", record.Status)
+	}
+	if record.NextAttemptAt.IsZero() || !record.NextAttemptAt.After(at) {
+		t.Fatalf("expected next attempt to be scheduled after %v, got %v", at, record.NextAttemptAt)
+	}
+}
+
+func TestRecorderMarksDeadLetterAfterMaxAttempts(t *testing.T) {
+	repository := &deliveryRepositoryStub{}
+	recorder := NewRecorder(repository)
+	at := time.Date(2026, 4, 3, 5, 10, 0, 0, time.UTC)
+
+	record, err := recorder.RecordAttempt(context.Background(), RecordAttemptInput{
+		Delivery: domain.WebhookDelivery{
+			ID:           "delivery-123",
+			Status:       "pending",
+			AttemptCount: 3,
+			CreatedAt:    at.Add(-10 * time.Minute),
+			UpdatedAt:    at.Add(-10 * time.Minute),
+		},
+		Response: core.WebhookDispatchResult{
+			StatusCode:  http.StatusInternalServerError,
+			Body:        []byte(`{"error":"boom"}`),
+			DeliveredAt: at,
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected record attempt to succeed, got error: %v", err)
+	}
+
+	if record.Status != DeliveryStatusDeadLetter {
+		t.Fatalf("expected returned status to be dead_letter, got %q", record.Status)
+	}
+	if !record.NextAttemptAt.IsZero() {
+		t.Fatalf("expected no next attempt for dead letter, got %v", record.NextAttemptAt)
 	}
 }
 

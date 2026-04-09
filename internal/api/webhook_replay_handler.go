@@ -36,22 +36,14 @@ func (h WebhookReplayHandler) ServeHTTP(writer http.ResponseWriter, request *htt
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(http.StatusAccepted)
 	_ = json.NewEncoder(writer).Encode(webhookDeliveryResponse{
-		ID:           delivery.ID,
-		EventID:      delivery.EventID,
-		EventType:    delivery.EventType,
-		Status:       delivery.Status,
-		AttemptCount: delivery.AttemptCount,
-		ResponseCode: delivery.ResponseCode,
+		ID:            delivery.ID,
+		EventID:       delivery.EventID,
+		EventType:     delivery.EventType,
+		Status:        delivery.Status,
+		AttemptCount:  delivery.AttemptCount,
+		ResponseCode:  delivery.ResponseCode,
+		NextAttemptAt: formatResponseTime(delivery.NextAttemptAt),
 	})
-}
-
-type webhookDeliveryResponse struct {
-	ID           string `json:"id"`
-	EventID      string `json:"event_id"`
-	EventType    string `json:"event_type"`
-	Status       string `json:"status"`
-	AttemptCount int    `json:"attempt_count"`
-	ResponseCode int    `json:"response_code"`
 }
 
 func webhookDeliveryIDFromReplayPath(path string) string {

@@ -18,10 +18,10 @@ func (s WebhookDeliveryStore) SaveWebhookDelivery(ctx context.Context, delivery 
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO webhook_deliveries (
 			id, organization_id, agent_id, event_type, event_id, request_url, request_payload,
-			request_headers, status, attempt_count, last_attempt_at, response_code, response_body,
-			created_at, updated_at
+			request_headers, status, attempt_count, last_attempt_at, next_attempt_at,
+			response_code, response_body, created_at, updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 		ON CONFLICT (id) DO UPDATE
 		SET organization_id = EXCLUDED.organization_id,
 		    agent_id = EXCLUDED.agent_id,
@@ -33,10 +33,11 @@ func (s WebhookDeliveryStore) SaveWebhookDelivery(ctx context.Context, delivery 
 		    status = EXCLUDED.status,
 		    attempt_count = EXCLUDED.attempt_count,
 		    last_attempt_at = EXCLUDED.last_attempt_at,
+		    next_attempt_at = EXCLUDED.next_attempt_at,
 		    response_code = EXCLUDED.response_code,
 		    response_body = EXCLUDED.response_body,
 		    updated_at = EXCLUDED.updated_at
-	`, model.ID, model.OrganizationID, model.AgentID, model.EventType, model.EventID, model.RequestURL, model.RequestPayload, model.RequestHeaders, model.Status, model.AttemptCount, nullableTime(model.LastAttemptAt), model.ResponseCode, model.ResponseBody, model.CreatedAt, model.UpdatedAt)
+	`, model.ID, model.OrganizationID, model.AgentID, model.EventType, model.EventID, model.RequestURL, model.RequestPayload, model.RequestHeaders, model.Status, model.AttemptCount, nullableTime(model.LastAttemptAt), nullableTime(model.NextAttemptAt), model.ResponseCode, model.ResponseBody, model.CreatedAt, model.UpdatedAt)
 	if err != nil {
 		return domain.WebhookDelivery{}, err
 	}
@@ -48,7 +49,7 @@ func (s WebhookDeliveryStore) GetWebhookDeliveryByID(ctx context.Context, delive
 	var model store.WebhookDeliveryModel
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, organization_id, agent_id, event_type, event_id, request_url, request_payload,
-		       request_headers, status, attempt_count, last_attempt_at, response_code, response_body,
+		       request_headers, status, attempt_count, last_attempt_at, next_attempt_at, response_code, response_body,
 		       created_at, updated_at
 		FROM webhook_deliveries
 		WHERE id = $1
@@ -64,6 +65,7 @@ func (s WebhookDeliveryStore) GetWebhookDeliveryByID(ctx context.Context, delive
 		&model.Status,
 		&model.AttemptCount,
 		&model.LastAttemptAt,
+		&model.NextAttemptAt,
 		&model.ResponseCode,
 		&model.ResponseBody,
 		&model.CreatedAt,
@@ -86,7 +88,7 @@ func (s WebhookDeliveryStore) ListWebhookDeliveries(ctx context.Context, limit i
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, organization_id, agent_id, event_type, event_id, request_url, request_payload,
-		       request_headers, status, attempt_count, last_attempt_at, response_code, response_body,
+		       request_headers, status, attempt_count, last_attempt_at, next_attempt_at, response_code, response_body,
 		       created_at, updated_at
 		FROM webhook_deliveries
 		ORDER BY updated_at DESC, id DESC
@@ -112,6 +114,7 @@ func (s WebhookDeliveryStore) ListWebhookDeliveries(ctx context.Context, limit i
 			&model.Status,
 			&model.AttemptCount,
 			&model.LastAttemptAt,
+			&model.NextAttemptAt,
 			&model.ResponseCode,
 			&model.ResponseBody,
 			&model.CreatedAt,

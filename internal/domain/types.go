@@ -174,6 +174,7 @@ type WebhookDelivery struct {
 	ResponseCode   int
 	ResponseBody   []byte
 	LastAttemptAt  time.Time
+	NextAttemptAt  time.Time
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }

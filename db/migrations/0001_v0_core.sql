@@ -130,6 +130,7 @@ CREATE TABLE webhook_deliveries (
     status TEXT NOT NULL,
     attempt_count INTEGER NOT NULL DEFAULT 0,
     last_attempt_at TIMESTAMPTZ,
+    next_attempt_at TIMESTAMPTZ,
     response_code INTEGER NOT NULL DEFAULT 0,
     response_body BYTEA NOT NULL DEFAULT ''::bytea,
     created_at TIMESTAMPTZ NOT NULL,

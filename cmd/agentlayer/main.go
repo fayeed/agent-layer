@@ -60,6 +60,7 @@ func newServer() http.Handler {
 	mux.Handle("GET /inbound/receipts", api.NewInboundReceiptHandler(newInboundReceiptHandlerService()))
 	mux.Handle("POST /inbound/reprocess", api.NewInboundReprocessHandler(newInboundReprocessHandlerService()))
 	mux.Handle("GET /webhooks/deliveries", api.NewWebhookDeliveriesHandler(newWebhookDeliveriesHandlerService()))
+	mux.Handle("POST /webhooks/deliveries/retry", api.NewWebhookRetryHandler(newWebhookRetryHandlerService()))
 	mux.Handle("GET /webhooks/deliveries/{deliveryID}", api.NewWebhookDeliveryHandler(newWebhookDeliveryHandlerService()))
 	mux.Handle("POST /webhooks/deliveries/{deliveryID}/replay", api.NewWebhookReplayHandler(newWebhookReplayHandlerService()))
 	mux.Handle("POST /threads/{threadID}/reply", api.NewReplyHandler(newReplyHandlerService()))
@@ -397,6 +398,18 @@ func newWebhookDeliveryHandlerService() api.WebhookDeliveryService {
 	return webhookDeliveryReadServiceAdapter{service: newWebhookDeliveryReadService()}
 }
 
+func newWebhookRetrySweepService() webhooks.RetrySweepService {
+	return webhooks.NewRetrySweepService(
+		webhookDeliveryGetterAdapter{store: runtimeStore},
+		newWebhookReplayService(),
+		time.Now,
+	)
+}
+
+func newWebhookRetryHandlerService() api.WebhookRetryService {
+	return webhookRetryServiceAdapter{service: newWebhookRetrySweepService()}
+}
+
 func newWebhookReplayHandlerService() api.WebhookReplayService {
 	return webhookReplayServiceAdapter{service: newWebhookReplayService()}
 }
@@ -645,6 +658,10 @@ type webhookDeliveryReadServiceAdapter struct {
 	service app.WebhookDeliveryReadService
 }
 
+type webhookRetryServiceAdapter struct {
+	service webhooks.RetrySweepService
+}
+
 type webhookReplayServiceAdapter struct{ service webhooks.ReplayService }
 
 type inboundReprocessServiceAdapter struct {
@@ -839,6 +856,19 @@ func (a webhookDeliveryListServiceAdapter) ListWebhookDeliveries(ctx context.Con
 
 func (a webhookDeliveryReadServiceAdapter) GetWebhookDelivery(ctx context.Context, deliveryID string) (domain.WebhookDelivery, error) {
 	return a.service.GetWebhookDelivery(ctx, deliveryID)
+}
+
+func (a webhookRetryServiceAdapter) RetryDueDeliveries(ctx context.Context, limit int) (api.WebhookRetryResult, error) {
+	result, err := a.service.RetryDueDeliveries(ctx, limit)
+	if err != nil {
+		return api.WebhookRetryResult{}, err
+	}
+	return api.WebhookRetryResult{
+		Attempted: result.Attempted,
+		Succeeded: result.Succeeded,
+		Failed:    result.Failed,
+		Skipped:   result.Skipped,
+	}, nil
 }
 
 func (a webhookReplayServiceAdapter) ReplayDelivery(ctx context.Context, deliveryID string) (domain.WebhookDelivery, error) {

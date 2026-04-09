@@ -129,6 +129,7 @@ type WebhookDeliveryModel struct {
 	Status         string
 	AttemptCount   int
 	LastAttemptAt  time.Time
+	NextAttemptAt  time.Time
 	ResponseCode   int
 	ResponseBody   []byte
 	CreatedAt      time.Time

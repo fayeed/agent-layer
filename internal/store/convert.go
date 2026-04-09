@@ -257,6 +257,7 @@ func WebhookDeliveryToModel(delivery domain.WebhookDelivery) (WebhookDeliveryMod
 		ResponseCode:   delivery.ResponseCode,
 		ResponseBody:   append([]byte(nil), delivery.ResponseBody...),
 		LastAttemptAt:  delivery.LastAttemptAt,
+		NextAttemptAt:  delivery.NextAttemptAt,
 		CreatedAt:      delivery.CreatedAt,
 		UpdatedAt:      delivery.UpdatedAt,
 	}, nil
@@ -284,6 +285,7 @@ func WebhookDeliveryFromModel(model WebhookDeliveryModel) (domain.WebhookDeliver
 		ResponseCode:   model.ResponseCode,
 		ResponseBody:   append([]byte(nil), model.ResponseBody...),
 		LastAttemptAt:  model.LastAttemptAt,
+		NextAttemptAt:  model.NextAttemptAt,
 		CreatedAt:      model.CreatedAt,
 		UpdatedAt:      model.UpdatedAt,
 	}, nil

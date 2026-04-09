@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/agentlayer/agentlayer/internal/domain"
 )
@@ -14,12 +15,13 @@ import (
 func TestWebhookDeliveryHandlerReturnsDelivery(t *testing.T) {
 	handler := NewWebhookDeliveryHandler(&webhookDeliveryServiceStub{
 		delivery: domain.WebhookDelivery{
-			ID:           "delivery-123",
-			EventID:      "event-123",
-			EventType:    "message.received",
-			Status:       "failed",
-			AttemptCount: 2,
-			ResponseCode: 500,
+			ID:            "delivery-123",
+			EventID:       "event-123",
+			EventType:     "message.received",
+			Status:        "failed",
+			AttemptCount:  2,
+			ResponseCode:  500,
+			NextAttemptAt: time.Date(2026, 4, 9, 20, 0, 0, 0, time.UTC),
 		},
 	})
 
@@ -39,6 +41,9 @@ func TestWebhookDeliveryHandlerReturnsDelivery(t *testing.T) {
 
 	if response.ID != "delivery-123" || response.ResponseCode != 500 {
 		t.Fatalf("expected webhook delivery response, got %#v", response)
+	}
+	if response.NextAttemptAt == "" {
+		t.Fatalf("expected next attempt timestamp in response, got %#v", response)
 	}
 }
 

@@ -194,6 +194,7 @@ func TestAuxiliaryRuntimeDataRoundTripsThroughStoreModels(t *testing.T) {
 		ResponseCode:  202,
 		ResponseBody:  []byte(`{"ok":true}`),
 		LastAttemptAt: now,
+		NextAttemptAt: now.Add(time.Minute),
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
@@ -215,7 +216,8 @@ func TestAuxiliaryRuntimeDataRoundTripsThroughStoreModels(t *testing.T) {
 	}
 	if string(gotDelivery.RequestPayload) != string(delivery.RequestPayload) ||
 		gotDelivery.RequestHeaders["X-AgentLayer-Signature"] != "abc123" ||
-		string(gotDelivery.ResponseBody) != string(delivery.ResponseBody) {
+		string(gotDelivery.ResponseBody) != string(delivery.ResponseBody) ||
+		!gotDelivery.NextAttemptAt.Equal(delivery.NextAttemptAt) {
 		t.Fatalf("expected webhook delivery round trip, got %#v", gotDelivery)
 	}
 
