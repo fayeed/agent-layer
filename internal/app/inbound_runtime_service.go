@@ -77,6 +77,10 @@ func (s InboundRuntimeService) HandleStoredMessage(ctx context.Context, stored c
 		return inbound.HandleResult{}, err
 	}
 
+	if handled.Duplicate {
+		return handled, nil
+	}
+
 	if s.config.WebhookURL == "" || s.config.Agent.Status != domain.AgentStatusActive || s.webhooks == nil {
 		return handled, nil
 	}

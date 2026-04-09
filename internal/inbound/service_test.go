@@ -104,6 +104,57 @@ func TestServicePassesProcessedResultIntoRecorder(t *testing.T) {
 	}
 }
 
+func TestServiceReturnsExistingInboundMessageForDuplicate(t *testing.T) {
+	service := NewServiceWithDuplicateLookup(
+		processorStub{
+			result: ProcessResult{
+				ParsedMessage: core.ParsedMessage{
+					MessageIDHeader: "<message-123@example.com>",
+				},
+			},
+		},
+		&capturingRecorder{},
+		duplicateLookupStub{
+			message: domain.Message{
+				ID:              "message-123",
+				ThreadID:        "thread-123",
+				ContactID:       "contact-123",
+				MessageIDHeader: "<message-123@example.com>",
+			},
+			thread: domain.Thread{
+				ID: "thread-123",
+			},
+			contact: domain.Contact{
+				ID:           "contact-123",
+				EmailAddress: "sender@example.com",
+			},
+			found: true,
+		},
+	)
+
+	result, err := service.HandleStoredMessage(context.Background(), core.StoredInboundMessage{
+		Receipt: core.InboundReceipt{
+			InboxID:             "inbox-123",
+			RawMessageObjectKey: "raw/test-message.eml",
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected duplicate handling to succeed, got error: %v", err)
+	}
+
+	if !result.Duplicate {
+		t.Fatal("expected duplicate result to be marked")
+	}
+
+	if result.Message.ID != "message-123" || result.Thread.ID != "thread-123" || result.Contact.ID != "contact-123" {
+		t.Fatalf("expected existing runtime state to be returned, got %#v", result)
+	}
+
+	if result.ThreadMatchStrategy != "duplicate" {
+		t.Fatalf("expected duplicate match strategy, got %q", result.ThreadMatchStrategy)
+	}
+}
+
 type processorStub struct {
 	result ProcessResult
 	err    error
@@ -127,10 +178,32 @@ type capturingRecorder struct {
 	processed ProcessResult
 	result    RecordResult
 	err       error
+	calls     int
 }
 
 func (s *capturingRecorder) Record(_ context.Context, stored core.StoredInboundMessage, processed ProcessResult) (RecordResult, error) {
+	s.calls++
 	s.stored = stored
 	s.processed = processed
 	return s.result, s.err
+}
+
+type duplicateLookupStub struct {
+	message domain.Message
+	thread  domain.Thread
+	contact domain.Contact
+	found   bool
+	err     error
+}
+
+func (s duplicateLookupStub) FindInboundByHeader(context.Context, string, string) (domain.Message, bool, error) {
+	return s.message, s.found, s.err
+}
+
+func (s duplicateLookupStub) GetByID(context.Context, string) (domain.Thread, error) {
+	return s.thread, s.err
+}
+
+func (s duplicateLookupStub) GetContactByID(context.Context, string) (domain.Contact, error) {
+	return s.contact, s.err
 }

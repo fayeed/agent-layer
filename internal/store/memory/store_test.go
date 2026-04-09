@@ -110,6 +110,7 @@ func TestStoreSupportsThreadContactAndMessageState(t *testing.T) {
 	_, err = store.Create(context.Background(), domain.Message{
 		ID:              "message-123",
 		ThreadID:        "thread-123",
+		InboxID:         "inbox-123",
 		MessageIDHeader: "<message-123@example.com>",
 	})
 	if err != nil {
@@ -150,6 +151,15 @@ func TestStoreSupportsThreadContactAndMessageState(t *testing.T) {
 
 	if message.MessageIDHeader != "<message-123@example.com>" {
 		t.Fatalf("expected stored message lookup, got %#v", message)
+	}
+
+	inboundMessage, found, err := store.FindInboundByHeader(context.Background(), "inbox-123", "<message-123@example.com>")
+	if err != nil || !found {
+		t.Fatalf("expected inbound message lookup to succeed, got found=%v err=%v", found, err)
+	}
+
+	if inboundMessage.ID != "message-123" {
+		t.Fatalf("expected inbound message lookup result, got %#v", inboundMessage)
 	}
 }
 

@@ -68,6 +68,40 @@ func TestInboundRuntimeServiceSkipsWebhookWhenAgentPaused(t *testing.T) {
 	}
 }
 
+func TestInboundRuntimeServiceSkipsWebhookForDuplicateInboundMessage(t *testing.T) {
+	deliveries := &messageReceivedDeliveryServiceStub{}
+
+	service := NewInboundRuntimeService(
+		inboundHandlerStub{result: inbound.HandleResult{
+			Duplicate: true,
+			Thread:    domain.Thread{ID: "thread-123"},
+			Contact:   domain.Contact{ID: "contact-123"},
+			Message:   domain.Message{ID: "message-123"},
+		}},
+		threadMessagesGetterStub{},
+		contactMemoryListerStub{},
+		deliveries,
+		time.Now,
+		InboundRuntimeConfig{
+			WebhookURL: "https://example.com/webhook",
+			Agent:      domain.Agent{Status: domain.AgentStatusActive},
+		},
+	)
+
+	result, err := service.HandleStoredMessage(context.Background(), core.StoredInboundMessage{})
+	if err != nil {
+		t.Fatalf("expected duplicate handling to succeed, got error: %v", err)
+	}
+
+	if !result.Duplicate {
+		t.Fatalf("expected duplicate flag to be preserved, got %#v", result)
+	}
+
+	if deliveries.calls != 0 {
+		t.Fatalf("expected duplicate inbound message to skip webhook delivery, got %d calls", deliveries.calls)
+	}
+}
+
 func TestInboundRuntimeServiceDeliversMessageReceivedWebhook(t *testing.T) {
 	now := time.Date(2026, 4, 3, 20, 15, 0, 0, time.UTC)
 	handled := inbound.HandleResult{

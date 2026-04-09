@@ -149,9 +149,10 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 }
 
 func newInboundService() smtpedge.StoredMessageHandler {
-	base := inbound.NewService(
+	base := inbound.NewServiceWithDuplicateLookup(
 		newInboundProcessor(),
 		newInboundRecorder(),
+		runtimeStore,
 	)
 	organization := currentOrganization()
 	agent := currentAgent()

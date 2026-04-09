@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/agentlayer/agentlayer/internal/domain"
+	"github.com/agentlayer/agentlayer/internal/platform/idempotency"
 )
 
 var (
@@ -29,6 +30,7 @@ type Store struct {
 	contactsByEmail       map[string]domain.Contact
 	threadsByID           map[string]domain.Thread
 	messagesByID          map[string]domain.Message
+	messagesByInboundKey  map[string]string
 	messagesByProviderID  map[string]domain.Message
 	messagesByThreadID    map[string][]string
 	memoriesByID          map[string]domain.ContactMemoryEntry
@@ -48,6 +50,7 @@ func NewStore() *Store {
 		contactsByEmail:       make(map[string]domain.Contact),
 		threadsByID:           make(map[string]domain.Thread),
 		messagesByID:          make(map[string]domain.Message),
+		messagesByInboundKey:  make(map[string]string),
 		messagesByProviderID:  make(map[string]domain.Message),
 		messagesByThreadID:    make(map[string][]string),
 		memoriesByID:          make(map[string]domain.ContactMemoryEntry),
@@ -244,6 +247,9 @@ func (s *Store) Create(_ context.Context, message domain.Message) (domain.Messag
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.messagesByID[message.ID] = message
+	if message.InboxID != "" && message.MessageIDHeader != "" {
+		s.messagesByInboundKey[idempotency.InboundMessageKey(message.InboxID, message.MessageIDHeader)] = message.ID
+	}
 	if message.ProviderMessageID != "" {
 		s.messagesByProviderID[message.ProviderMessageID] = message
 	}
@@ -257,10 +263,26 @@ func (s *Store) SaveMessage(_ context.Context, message domain.Message) (domain.M
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.messagesByID[message.ID] = message
+	if message.InboxID != "" && message.MessageIDHeader != "" {
+		s.messagesByInboundKey[idempotency.InboundMessageKey(message.InboxID, message.MessageIDHeader)] = message.ID
+	}
 	if message.ProviderMessageID != "" {
 		s.messagesByProviderID[message.ProviderMessageID] = message
 	}
 	return message, nil
+}
+
+func (s *Store) FindInboundByHeader(_ context.Context, inboxID, messageIDHeader string) (domain.Message, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	messageID, ok := s.messagesByInboundKey[idempotency.InboundMessageKey(inboxID, messageIDHeader)]
+	if !ok {
+		return domain.Message{}, false, nil
+	}
+
+	message, ok := s.messagesByID[messageID]
+	return message, ok, nil
 }
 
 func (s *Store) ListByThreadID(_ context.Context, threadID string, limit int) ([]domain.Message, error) {
