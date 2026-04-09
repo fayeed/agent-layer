@@ -1,9 +1,15 @@
-.PHONY: postgres-up postgres-down run run-postgres bootstrap-local show-local send-sample test
+.PHONY: postgres-up postgres-down runtime-up runtime-down run run-postgres run-postgres-s3 bootstrap-local show-local send-sample test
 
 postgres-up:
 	docker compose up -d postgres
 
+runtime-up:
+	docker compose up -d postgres minio
+
 postgres-down:
+	docker compose down
+
+runtime-down:
 	docker compose down
 
 run:
@@ -11,6 +17,9 @@ run:
 
 run-postgres:
 	set -a && . ./.env.example && set +a && go run ./cmd/agentlayer
+
+run-postgres-s3:
+	set -a && . ./.env.example && set +a && AGENTLAYER_RAW_STORE=s3 go run ./cmd/agentlayer
 
 bootstrap-local:
 	go run ./cmd/agentlayerctl bootstrap

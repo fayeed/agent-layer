@@ -38,9 +38,18 @@ Optional env vars:
 - `AGENTLAYER_WEBHOOK_URL`
 - `AGENTLAYER_WEBHOOK_SECRET`
 - `AGENTLAYER_DATABASE_URL`
+- `AGENTLAYER_RAW_STORE`
 - `AGENTLAYER_RAW_DATA_DIR`
+- `AGENTLAYER_S3_BUCKET`
+- `AGENTLAYER_S3_ENDPOINT`
+- `AGENTLAYER_S3_PATH_STYLE`
+- `AGENTLAYER_S3_ACCESS_KEY_ID`
+- `AGENTLAYER_S3_SECRET_ACCESS_KEY`
 - `AGENTLAYER_AUTO_MIGRATE`
 - `AGENTLAYER_EMAIL_PROVIDER`
+- `AGENTLAYER_WEBHOOK_RETRY_ENABLED`
+- `AGENTLAYER_WEBHOOK_RETRY_INTERVAL`
+- `AGENTLAYER_WEBHOOK_RETRY_LIMIT`
 - `AWS_REGION`
 
 Helper files in the repo:
@@ -54,7 +63,10 @@ Helper files in the repo:
 
 ## Postgres Mode
 
-The server can now run with Postgres-backed structured state and local filesystem raw MIME storage.
+The server can now run with Postgres-backed structured state and either:
+
+- local filesystem raw MIME storage
+- S3/MinIO-compatible raw MIME storage
 
 Example:
 
@@ -73,12 +85,24 @@ make postgres-up
 make run-postgres
 ```
 
+For local MinIO-backed raw storage:
+
+```bash
+make runtime-up
+make run-postgres-s3
+```
+
 Notes:
 
 - `AGENTLAYER_AUTO_MIGRATE=true` applies the embedded `db/migrations/0001_v0_core.sql` schema on startup.
-- Raw MIME files are written under `AGENTLAYER_RAW_DATA_DIR`.
+- `AGENTLAYER_RAW_STORE=fs` writes raw MIME under `AGENTLAYER_RAW_DATA_DIR`.
+- `AGENTLAYER_RAW_STORE=s3` writes raw MIME to `AGENTLAYER_S3_BUCKET`.
+- `AGENTLAYER_S3_ENDPOINT` and `AGENTLAYER_S3_PATH_STYLE=true` make local MinIO work cleanly.
 - If `AGENTLAYER_DATABASE_URL` is unset, the server falls back to the in-memory runtime store.
 - The bundled Postgres container uses database `agentlayer` with user/password `agentlayer`.
+- The bundled MinIO container uses `minioadmin` / `minioadmin` and exposes:
+  - S3 API: `http://localhost:9000`
+  - Console: `http://localhost:9001`
 
 ## Email Provider Mode
 
@@ -89,6 +113,22 @@ The runtime currently supports:
 
 SES mode uses the latest `aws-sdk-go-v2` client and expects standard AWS credentials plus `AWS_REGION`.
 The server now fails fast on boot if `AGENTLAYER_EMAIL_PROVIDER=ses` is selected without `AWS_REGION`.
+
+## Webhook Retry Worker
+
+Failed webhook deliveries now retry automatically in the background.
+
+Relevant env vars:
+
+- `AGENTLAYER_WEBHOOK_RETRY_ENABLED`
+- `AGENTLAYER_WEBHOOK_RETRY_INTERVAL`
+- `AGENTLAYER_WEBHOOK_RETRY_LIMIT`
+
+You can still trigger a manual sweep with:
+
+```bash
+curl -X POST 'http://localhost:8080/webhooks/deliveries/retry?limit=20'
+```
 
 Example:
 

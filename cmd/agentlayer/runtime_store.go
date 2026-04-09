@@ -7,7 +7,6 @@ import (
 
 	"github.com/agentlayer/agentlayer/internal/domain"
 	"github.com/agentlayer/agentlayer/internal/inbound"
-	"github.com/agentlayer/agentlayer/internal/store/blobfs"
 	storepg "github.com/agentlayer/agentlayer/internal/store/postgres"
 )
 
@@ -49,8 +48,11 @@ type appStore interface {
 }
 
 type postgresRuntimeStore struct {
-	db           *sql.DB
-	raw          blobfs.Store
+	db  *sql.DB
+	raw interface {
+		Put(ctx context.Context, objectKey string, data []byte) error
+		Get(ctx context.Context, objectKey string) ([]byte, error)
+	}
 	bootstrap    storepg.BootstrapStore
 	receipts     storepg.InboundReceiptStore
 	contacts     storepg.ContactStore
@@ -62,7 +64,10 @@ type postgresRuntimeStore struct {
 	suppressions storepg.SuppressionStore
 }
 
-func newPostgresRuntimeStore(db *sql.DB, raw blobfs.Store) *postgresRuntimeStore {
+func newPostgresRuntimeStore(db *sql.DB, raw interface {
+	Put(ctx context.Context, objectKey string, data []byte) error
+	Get(ctx context.Context, objectKey string) ([]byte, error)
+}) *postgresRuntimeStore {
 	return &postgresRuntimeStore{
 		db:           db,
 		raw:          raw,

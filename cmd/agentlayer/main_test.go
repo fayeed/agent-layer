@@ -185,7 +185,13 @@ func TestSMTPAddressHelpers(t *testing.T) {
 
 func TestRuntimeEnvHelpers(t *testing.T) {
 	t.Setenv("AGENTLAYER_DATABASE_URL", "postgres://agentlayer:agentlayer@localhost:5432/agentlayer?sslmode=disable")
+	t.Setenv("AGENTLAYER_RAW_STORE", "s3")
 	t.Setenv("AGENTLAYER_RAW_DATA_DIR", "/tmp/agentlayer-raw")
+	t.Setenv("AGENTLAYER_S3_BUCKET", "agentlayer-raw")
+	t.Setenv("AGENTLAYER_S3_ENDPOINT", "http://localhost:9000")
+	t.Setenv("AGENTLAYER_S3_PATH_STYLE", "true")
+	t.Setenv("AGENTLAYER_S3_ACCESS_KEY_ID", "minioadmin")
+	t.Setenv("AGENTLAYER_S3_SECRET_ACCESS_KEY", "minioadmin")
 	t.Setenv("AGENTLAYER_AUTO_MIGRATE", "true")
 	t.Setenv("AGENTLAYER_EMAIL_PROVIDER", "ses")
 	t.Setenv("AWS_REGION", "us-east-1")
@@ -196,6 +202,24 @@ func TestRuntimeEnvHelpers(t *testing.T) {
 	if got := rawDataDir(); got != "/tmp/agentlayer-raw" {
 		t.Fatalf("expected raw data dir helper to read env, got %q", got)
 	}
+	if got := rawStoreType(); got != "s3" {
+		t.Fatalf("expected raw store helper to read env, got %q", got)
+	}
+	if got := rawS3Bucket(); got != "agentlayer-raw" {
+		t.Fatalf("expected s3 bucket helper to read env, got %q", got)
+	}
+	if got := rawS3Endpoint(); got != "http://localhost:9000" {
+		t.Fatalf("expected s3 endpoint helper to read env, got %q", got)
+	}
+	if !rawS3PathStyle() {
+		t.Fatal("expected s3 path style helper to read env")
+	}
+	if got := rawS3AccessKeyID(); got != "minioadmin" {
+		t.Fatalf("expected s3 access key helper to read env, got %q", got)
+	}
+	if got := rawS3SecretAccessKey(); got != "minioadmin" {
+		t.Fatalf("expected s3 secret helper to read env, got %q", got)
+	}
 	if !autoMigrateEnabled() {
 		t.Fatal("expected auto migrate helper to be enabled")
 	}
@@ -204,6 +228,67 @@ func TestRuntimeEnvHelpers(t *testing.T) {
 	}
 	if got := awsRegion(); got != "us-east-1" {
 		t.Fatalf("expected aws region helper to read env, got %q", got)
+	}
+}
+
+func TestValidateRawStoreConfig(t *testing.T) {
+	t.Run("fs default", func(t *testing.T) {
+		t.Setenv("AGENTLAYER_RAW_STORE", "")
+		t.Setenv("AGENTLAYER_S3_BUCKET", "")
+		t.Setenv("AWS_REGION", "")
+
+		if err := validateRawStoreConfig(); err != nil {
+			t.Fatalf("expected fs raw store config to be valid, got %v", err)
+		}
+	})
+
+	t.Run("s3 requires bucket", func(t *testing.T) {
+		t.Setenv("AGENTLAYER_RAW_STORE", "s3")
+		t.Setenv("AGENTLAYER_S3_BUCKET", "")
+		t.Setenv("AWS_REGION", "us-east-1")
+
+		err := validateRawStoreConfig()
+		if err == nil || !strings.Contains(err.Error(), "AGENTLAYER_S3_BUCKET") {
+			t.Fatalf("expected missing bucket error, got %v", err)
+		}
+	})
+
+	t.Run("s3 requires region", func(t *testing.T) {
+		t.Setenv("AGENTLAYER_RAW_STORE", "s3")
+		t.Setenv("AGENTLAYER_S3_BUCKET", "agentlayer-raw")
+		t.Setenv("AWS_REGION", "")
+
+		err := validateRawStoreConfig()
+		if err == nil || !strings.Contains(err.Error(), "AWS_REGION") {
+			t.Fatalf("expected missing region error, got %v", err)
+		}
+	})
+
+	t.Run("unknown raw store", func(t *testing.T) {
+		t.Setenv("AGENTLAYER_RAW_STORE", "blob")
+		t.Setenv("AGENTLAYER_S3_BUCKET", "")
+		t.Setenv("AWS_REGION", "")
+
+		err := validateRawStoreConfig()
+		if err == nil || !strings.Contains(err.Error(), "unsupported raw store") {
+			t.Fatalf("expected unsupported raw store error, got %v", err)
+		}
+	})
+}
+
+func TestNewRawStoreUsesFilesystemByDefault(t *testing.T) {
+	t.Setenv("AGENTLAYER_RAW_STORE", "")
+	t.Setenv("AGENTLAYER_RAW_DATA_DIR", t.TempDir())
+
+	store, description, err := newRawStore(context.Background())
+	if err != nil {
+		t.Fatalf("expected filesystem raw store to build, got error: %v", err)
+	}
+	if !strings.HasPrefix(description, "fs:") {
+		t.Fatalf("expected filesystem raw store description, got %q", description)
+	}
+	if err := store.Put(context.Background(), "raw/test.eml", []byte("mime")); err != nil {
+		t.Fatalf("expected filesystem raw store put to succeed, got error: %v", err)
 	}
 }
 

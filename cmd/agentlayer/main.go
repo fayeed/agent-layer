@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 	sesprovider "github.com/agentlayer/agentlayer/internal/providers/ses"
 	"github.com/agentlayer/agentlayer/internal/smtpedge"
 	"github.com/agentlayer/agentlayer/internal/store/blobfs"
+	"github.com/agentlayer/agentlayer/internal/store/blobs3"
 	memorystore "github.com/agentlayer/agentlayer/internal/store/memory"
 	"github.com/agentlayer/agentlayer/internal/threading"
 	"github.com/agentlayer/agentlayer/internal/webhooks"
@@ -122,6 +124,41 @@ func rawDataDir() string {
 	return ".agentlayer-data/raw"
 }
 
+func rawStoreType() string {
+	if value := os.Getenv("AGENTLAYER_RAW_STORE"); value != "" {
+		return value
+	}
+	return "fs"
+}
+
+func rawS3Bucket() string {
+	return os.Getenv("AGENTLAYER_S3_BUCKET")
+}
+
+func rawS3Endpoint() string {
+	return os.Getenv("AGENTLAYER_S3_ENDPOINT")
+}
+
+func rawS3PathStyle() bool {
+	value := os.Getenv("AGENTLAYER_S3_PATH_STYLE")
+	if value == "" {
+		return true
+	}
+	enabled, err := strconv.ParseBool(value)
+	if err != nil {
+		return true
+	}
+	return enabled
+}
+
+func rawS3AccessKeyID() string {
+	return os.Getenv("AGENTLAYER_S3_ACCESS_KEY_ID")
+}
+
+func rawS3SecretAccessKey() string {
+	return os.Getenv("AGENTLAYER_S3_SECRET_ACCESS_KEY")
+}
+
 func emailProviderType() string {
 	if value := os.Getenv("AGENTLAYER_EMAIL_PROVIDER"); value != "" {
 		return value
@@ -147,6 +184,23 @@ func validateEmailProviderConfig() error {
 	}
 }
 
+func validateRawStoreConfig() error {
+	switch rawStoreType() {
+	case "fs":
+		return nil
+	case "s3":
+		if strings.TrimSpace(rawS3Bucket()) == "" {
+			return errors.New("AGENTLAYER_S3_BUCKET is required when AGENTLAYER_RAW_STORE=s3")
+		}
+		if strings.TrimSpace(awsRegion()) == "" {
+			return errors.New("AWS_REGION is required when AGENTLAYER_RAW_STORE=s3")
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported raw store %q", rawStoreType())
+	}
+}
+
 func autoMigrateEnabled() bool {
 	value := os.Getenv("AGENTLAYER_AUTO_MIGRATE")
 	return value == "1" || value == "true" || value == "TRUE"
@@ -154,6 +208,9 @@ func autoMigrateEnabled() bool {
 
 func newRuntimeStore() appStore {
 	if databaseURL() != "" {
+		if err := validateRawStoreConfig(); err != nil {
+			panic(err)
+		}
 		db, err := sql.Open("pgx", databaseURL())
 		if err != nil {
 			panic(err)
@@ -170,8 +227,13 @@ func newRuntimeStore() appStore {
 				panic(err)
 			}
 		}
-		store := newPostgresRuntimeStore(db, blobfs.NewStore(rawDataDir()))
-		log.Printf("agentlayer runtime store: postgres raw=%s auto_migrate=%t", rawDataDir(), autoMigrateEnabled())
+		rawStore, rawStoreDescription, err := newRawStore(context.Background())
+		if err != nil {
+			_ = db.Close()
+			panic(err)
+		}
+		store := newPostgresRuntimeStore(db, rawStore)
+		log.Printf("agentlayer runtime store: postgres raw=%s auto_migrate=%t", rawStoreDescription, autoMigrateEnabled())
 		seedLocalRuntime(store)
 		return store
 	}
@@ -180,6 +242,35 @@ func newRuntimeStore() appStore {
 	log.Printf("agentlayer runtime store: memory")
 	seedLocalRuntime(store)
 	return store
+}
+
+func newRawStore(ctx context.Context) (interface {
+	Put(ctx context.Context, objectKey string, data []byte) error
+	Get(ctx context.Context, objectKey string) ([]byte, error)
+}, string, error) {
+	switch rawStoreType() {
+	case "fs":
+		return blobfs.NewStore(rawDataDir()), "fs:" + rawDataDir(), nil
+	case "s3":
+		store, err := blobs3.NewStore(ctx, blobs3.Config{
+			Region:          awsRegion(),
+			Bucket:          rawS3Bucket(),
+			Endpoint:        rawS3Endpoint(),
+			PathStyle:       rawS3PathStyle(),
+			AccessKeyID:     rawS3AccessKeyID(),
+			SecretAccessKey: rawS3SecretAccessKey(),
+		})
+		if err != nil {
+			return nil, "", err
+		}
+		description := "s3:" + rawS3Bucket()
+		if endpoint := rawS3Endpoint(); endpoint != "" {
+			description += "@" + endpoint
+		}
+		return store, description, nil
+	default:
+		return nil, "", fmt.Errorf("unsupported raw store %q", rawStoreType())
+	}
 }
 
 func applyV0Schema(ctx context.Context, db *sql.DB) error {
