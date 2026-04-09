@@ -128,6 +128,87 @@ func TestParserParsesMultipartMessage(t *testing.T) {
 	}
 }
 
+func TestParserDecodesEncodedHeadersAndBodies(t *testing.T) {
+	raw := "From: =?utf-8?Q?Jos=C3=A9_Sender?= <sender@example.com>\r\n" +
+		"To: =?utf-8?Q?Agent_Team?= <agent@example.com>\r\n" +
+		"Subject: =?utf-8?Q?Re:_Ol=C3=A1_Mundo?=\r\n" +
+		"Message-ID: <message-encoded@example.com>\r\n" +
+		"MIME-Version: 1.0\r\n" +
+		"Content-Type: multipart/mixed; boundary=mixed-boundary\r\n" +
+		"\r\n" +
+		"--mixed-boundary\r\n" +
+		"Content-Type: multipart/alternative; boundary=alt-boundary\r\n" +
+		"\r\n" +
+		"--alt-boundary\r\n" +
+		"Content-Type: text/plain; charset=utf-8\r\n" +
+		"Content-Transfer-Encoding: quoted-printable\r\n" +
+		"\r\n" +
+		"Plain=20Ol=C3=A1.\r\n" +
+		"--alt-boundary\r\n" +
+		"Content-Type: text/html; charset=utf-8\r\n" +
+		"Content-Transfer-Encoding: base64\r\n" +
+		"\r\n" +
+		"PHA+SFRNTCBPbMOhLjwvcD4=\r\n" +
+		"--alt-boundary--\r\n" +
+		"--mixed-boundary\r\n" +
+		"Content-Type: application/pdf\r\n" +
+		"Content-Transfer-Encoding: base64\r\n" +
+		"Content-Disposition: attachment; filename=\"invoice.pdf\"\r\n" +
+		"\r\n" +
+		"JVBERi0xLjQ=\r\n" +
+		"--mixed-boundary--\r\n"
+
+	reader := rawMessageReaderStub{
+		payloads: map[string][]byte{
+			"raw/encoded-message.eml": []byte(raw),
+		},
+	}
+
+	parser := New(reader)
+
+	parsed, err := parser.Parse(context.Background(), core.StoredInboundMessage{
+		Receipt: core.InboundReceipt{
+			RawMessageObjectKey: "raw/encoded-message.eml",
+			ReceivedAt:          time.Date(2026, 4, 9, 0, 0, 0, 0, time.UTC),
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected parse to succeed, got error: %v", err)
+	}
+
+	if parsed.Subject != "Re: Olá Mundo" {
+		t.Fatalf("expected decoded subject, got %q", parsed.Subject)
+	}
+
+	if parsed.SubjectNormalized != "olá mundo" {
+		t.Fatalf("expected decoded normalized subject, got %q", parsed.SubjectNormalized)
+	}
+
+	if parsed.From.DisplayName != "José Sender" {
+		t.Fatalf("expected decoded from display name, got %#v", parsed.From)
+	}
+
+	if len(parsed.To) != 1 || parsed.To[0].DisplayName != "Agent Team" {
+		t.Fatalf("expected decoded to display name, got %#v", parsed.To)
+	}
+
+	if parsed.TextBody != "Plain Olá." {
+		t.Fatalf("expected decoded text body, got %q", parsed.TextBody)
+	}
+
+	if parsed.HTMLBody != "<p>HTML Olá.</p>" {
+		t.Fatalf("expected decoded html body, got %q", parsed.HTMLBody)
+	}
+
+	if len(parsed.Attachments) != 1 {
+		t.Fatalf("expected 1 attachment, got %d", len(parsed.Attachments))
+	}
+
+	if parsed.Attachments[0].SizeBytes != int64(len("%PDF-1.4")) {
+		t.Fatalf("expected decoded attachment size, got %#v", parsed.Attachments[0])
+	}
+}
+
 type rawMessageReaderStub struct {
 	payloads map[string][]byte
 }

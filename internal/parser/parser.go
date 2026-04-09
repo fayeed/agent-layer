@@ -3,9 +3,11 @@ package parser
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"io"
 	"mime"
 	"mime/multipart"
+	"mime/quotedprintable"
 	"net/mail"
 	"strings"
 
@@ -39,8 +41,8 @@ func (p Parser) Parse(ctx context.Context, message core.StoredInboundMessage) (c
 		MessageIDHeader:   m.Header.Get("Message-ID"),
 		InReplyTo:         m.Header.Get("In-Reply-To"),
 		References:        strings.Fields(m.Header.Get("References")),
-		Subject:           m.Header.Get("Subject"),
-		SubjectNormalized: normalizeSubject(m.Header.Get("Subject")),
+		Subject:           decodeHeader(m.Header.Get("Subject")),
+		SubjectNormalized: normalizeSubject(decodeHeader(m.Header.Get("Subject"))),
 		From:              parseSingleAddress(m.Header.Get("From")),
 		ReplyTo:           parseAddressList(m.Header.Get("Reply-To")),
 		To:                parseAddressList(m.Header.Get("To")),
@@ -49,14 +51,14 @@ func (p Parser) Parse(ctx context.Context, message core.StoredInboundMessage) (c
 	}
 
 	contentType := m.Header.Get("Content-Type")
-	if err := populateBodiesAndAttachments(&parsed, contentType, m.Body); err != nil {
+	if err := populateBodiesAndAttachments(&parsed, contentType, m.Header.Get("Content-Transfer-Encoding"), m.Body); err != nil {
 		return core.ParsedMessage{}, err
 	}
 
 	return parsed, nil
 }
 
-func populateBodiesAndAttachments(parsed *core.ParsedMessage, contentType string, body io.Reader) error {
+func populateBodiesAndAttachments(parsed *core.ParsedMessage, contentType, transferEncoding string, body io.Reader) error {
 	mediaType, params, err := mime.ParseMediaType(contentType)
 	if err != nil || mediaType == "" {
 		payload, readErr := io.ReadAll(body)
@@ -81,7 +83,7 @@ func populateBodiesAndAttachments(parsed *core.ParsedMessage, contentType string
 			partContentType := part.Header.Get("Content-Type")
 			disposition := part.Header.Get("Content-Disposition")
 			if strings.HasPrefix(strings.ToLower(disposition), "attachment") {
-				payload, readErr := io.ReadAll(part)
+				payload, readErr := readDecodedBody(part, part.Header.Get("Content-Transfer-Encoding"))
 				_ = part.Close()
 				if readErr != nil {
 					return readErr
@@ -97,7 +99,7 @@ func populateBodiesAndAttachments(parsed *core.ParsedMessage, contentType string
 				continue
 			}
 
-			if err := populateBodiesAndAttachments(parsed, partContentType, part); err != nil {
+			if err := populateBodiesAndAttachments(parsed, partContentType, part.Header.Get("Content-Transfer-Encoding"), part); err != nil {
 				_ = part.Close()
 				return err
 			}
@@ -106,7 +108,7 @@ func populateBodiesAndAttachments(parsed *core.ParsedMessage, contentType string
 		}
 	}
 
-	payload, err := io.ReadAll(body)
+	payload, err := readDecodedBody(body, transferEncoding)
 	if err != nil {
 		return err
 	}
@@ -147,10 +149,34 @@ func parseAddressList(value string) []core.ParsedAddress {
 	for _, address := range addresses {
 		parsed = append(parsed, core.ParsedAddress{
 			Email:       address.Address,
-			DisplayName: address.Name,
+			DisplayName: decodeHeader(address.Name),
 		})
 	}
 	return parsed
+}
+
+func decodeHeader(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return ""
+	}
+
+	decoded, err := new(mime.WordDecoder).DecodeHeader(value)
+	if err != nil {
+		return value
+	}
+	return decoded
+}
+
+func readDecodedBody(body io.Reader, transferEncoding string) ([]byte, error) {
+	reader := body
+	switch strings.ToLower(strings.TrimSpace(transferEncoding)) {
+	case "base64":
+		reader = base64.NewDecoder(base64.StdEncoding, body)
+	case "quoted-printable":
+		reader = quotedprintable.NewReader(body)
+	}
+
+	return io.ReadAll(reader)
 }
 
 func normalizeSubject(subject string) string {
