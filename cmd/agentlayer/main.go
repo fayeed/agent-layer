@@ -47,6 +47,7 @@ func newServer() http.Handler {
 	mux.HandleFunc("GET /healthz", handleHealth)
 	mux.Handle("GET /bootstrap", api.NewBootstrapReadHandler(newBootstrapReadHandlerService()))
 	mux.Handle("POST /bootstrap", api.NewBootstrapHandler(newBootstrapHandlerService()))
+	mux.Handle("GET /inbound/receipts", api.NewInboundReceiptHandler(newInboundReceiptHandlerService()))
 	mux.Handle("POST /inbound/reprocess", api.NewInboundReprocessHandler(newInboundReprocessHandlerService()))
 	mux.Handle("GET /webhooks/deliveries", api.NewWebhookDeliveriesHandler(newWebhookDeliveriesHandlerService()))
 	mux.Handle("GET /webhooks/deliveries/{deliveryID}", api.NewWebhookDeliveryHandler(newWebhookDeliveryHandlerService()))
@@ -223,6 +224,14 @@ func newThreadReadService() app.ThreadReadService {
 
 func newInboundReprocessService() app.InboundReprocessService {
 	return app.NewInboundReprocessService(runtimeStore, newInboundService())
+}
+
+func newInboundReceiptReadService() app.InboundReceiptReadService {
+	return app.NewInboundReceiptReadService(runtimeStore)
+}
+
+func newInboundReceiptHandlerService() api.InboundReceiptService {
+	return inboundReceiptReadServiceAdapter{service: newInboundReceiptReadService()}
 }
 
 func newInboundReprocessHandlerService() api.InboundReprocessService {
@@ -527,6 +536,10 @@ type inboundReprocessServiceAdapter struct {
 	service app.InboundReprocessService
 }
 
+type inboundReceiptReadServiceAdapter struct {
+	service app.InboundReceiptReadService
+}
+
 func (a bootstrapServiceAdapter) BootstrapLocal(ctx context.Context, input api.BootstrapInput) (api.BootstrapResult, error) {
 	result, err := a.service.BootstrapLocal(ctx, app.BootstrapInput{
 		OrganizationName: input.OrganizationName,
@@ -562,6 +575,10 @@ func (a inboundReprocessServiceAdapter) ReprocessByObjectKey(ctx context.Context
 		ThreadID:  result.Thread.ID,
 		Duplicate: result.Duplicate,
 	}, nil
+}
+
+func (a inboundReceiptReadServiceAdapter) GetInboundReceipt(ctx context.Context, objectKey string) (inbound.DurableReceiptRequest, error) {
+	return a.service.GetInboundReceipt(ctx, objectKey)
 }
 
 func (a bootstrapReadServiceAdapter) GetBootstrap(ctx context.Context) (api.BootstrapResult, error) {

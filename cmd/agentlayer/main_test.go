@@ -48,6 +48,7 @@ func TestNewServerRegistersV0RouteShapes(t *testing.T) {
 	}{
 		{method: http.MethodGet, path: "/bootstrap"},
 		{method: http.MethodPost, path: "/bootstrap"},
+		{method: http.MethodGet, path: "/inbound/receipts"},
 		{method: http.MethodPost, path: "/inbound/reprocess"},
 		{method: http.MethodGet, path: "/webhooks/deliveries"},
 		{method: http.MethodPost, path: "/threads/thread-123/reply"},
@@ -107,6 +108,7 @@ func TestNewServerWiresRemainingHandlers(t *testing.T) {
 	}{
 		{method: http.MethodGet, path: "/bootstrap", want: http.StatusOK},
 		{method: http.MethodPost, path: "/bootstrap", body: "{}", want: http.StatusBadRequest},
+		{method: http.MethodGet, path: "/inbound/receipts", want: http.StatusBadRequest},
 		{method: http.MethodPost, path: "/inbound/reprocess", body: "{}", want: http.StatusBadRequest},
 		{method: http.MethodGet, path: "/webhooks/deliveries", want: http.StatusOK},
 		{method: http.MethodGet, path: "/webhooks/deliveries/delivery-123", want: http.StatusNotFound},
@@ -625,6 +627,32 @@ func TestInboundReprocessEndpointReusesStoredReceiptWithoutRedeliveringWebhook(t
 	case duplicateWebhook := <-receivedCh:
 		t.Fatalf("expected reprocess to skip webhook redelivery, got %#v", duplicateWebhook)
 	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestInboundReceiptEndpointLoadsStoredReceipt(t *testing.T) {
+	runtimeStore = newRuntimeStore()
+	server := newServer()
+
+	if _, err := handleTestInboundMessage(t, "raw/receipt-message.eml"); err != nil {
+		t.Fatalf("expected inbound handling to succeed, got error: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/inbound/receipts?object_key=raw/receipt-message.eml", nil)
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected inbound receipt endpoint to succeed, got %d", recorder.Code)
+	}
+
+	var response map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("expected receipt response json, got error: %v", err)
+	}
+
+	if response["raw_message_object_key"] != "raw/receipt-message.eml" || response["smtp_transaction_id"] != "smtp-test-session" {
+		t.Fatalf("expected stored inbound receipt response, got %#v", response)
 	}
 }
 
