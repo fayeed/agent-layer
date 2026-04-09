@@ -47,3 +47,30 @@ func TestSuppressionStoreSavesSuppressedAddresses(t *testing.T) {
 		t.Fatalf("expected suppression save to succeed, got error: %v", err)
 	}
 }
+
+func TestSuppressionStoreChecksSuppressedAddresses(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("expected sqlmock db, got error: %v", err)
+	}
+	defer db.Close()
+
+	mock.ExpectQuery(regexp.QuoteMeta(`
+		SELECT EXISTS(
+			SELECT 1
+			FROM suppressed_addresses
+			WHERE organization_id = $1 AND email_address = $2
+		)
+	`)).
+		WithArgs("org-123", "sender@example.com").
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+
+	store := NewSuppressionStore(db)
+	suppressed, err := store.IsSuppressed(context.Background(), "org-123", "sender@example.com")
+	if err != nil {
+		t.Fatalf("expected suppression check to succeed, got error: %v", err)
+	}
+	if !suppressed {
+		t.Fatal("expected suppression check to report true")
+	}
+}

@@ -42,6 +42,7 @@ type appStore interface {
 	CreateMemory(ctx context.Context, entry domain.ContactMemoryEntry) (domain.ContactMemoryEntry, error)
 	ListMemoryByContactID(ctx context.Context, contactID string, limit int) ([]domain.ContactMemoryEntry, error)
 	SaveSuppression(ctx context.Context, record domain.SuppressedAddress) (domain.SuppressedAddress, error)
+	IsSuppressed(ctx context.Context, organizationID, emailAddress string) (bool, error)
 	SaveWebhookDelivery(ctx context.Context, delivery domain.WebhookDelivery) (domain.WebhookDelivery, error)
 	GetWebhookDeliveryByID(ctx context.Context, deliveryID string) (domain.WebhookDelivery, error)
 	ListWebhookDeliveries(ctx context.Context, limit int) ([]domain.WebhookDelivery, error)
@@ -170,6 +171,9 @@ func (s *postgresRuntimeStore) ListMemoryByContactID(ctx context.Context, contac
 }
 func (s *postgresRuntimeStore) SaveSuppression(ctx context.Context, record domain.SuppressedAddress) (domain.SuppressedAddress, error) {
 	return s.suppressions.Save(ctx, record)
+}
+func (s *postgresRuntimeStore) IsSuppressed(ctx context.Context, organizationID, emailAddress string) (bool, error) {
+	return s.suppressions.IsSuppressed(ctx, organizationID, emailAddress)
 }
 func (s *postgresRuntimeStore) SaveWebhookDelivery(ctx context.Context, delivery domain.WebhookDelivery) (domain.WebhookDelivery, error) {
 	return s.webhooks.SaveWebhookDelivery(ctx, delivery)

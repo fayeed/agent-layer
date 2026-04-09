@@ -260,6 +260,28 @@ func TestStoreSupportsMemoryAndWebhookDeliveryState(t *testing.T) {
 	}
 }
 
+func TestStoreChecksSuppressedAddresses(t *testing.T) {
+	store := NewStore()
+
+	_, err := store.SaveSuppression(context.Background(), domain.SuppressedAddress{
+		ID:             "suppression-123",
+		OrganizationID: "org-123",
+		EmailAddress:   "sender@example.com",
+		Reason:         "hard_bounce",
+	})
+	if err != nil {
+		t.Fatalf("expected suppression save to succeed, got error: %v", err)
+	}
+
+	suppressed, err := store.IsSuppressed(context.Background(), "org-123", "sender@example.com")
+	if err != nil {
+		t.Fatalf("expected suppression check to succeed, got error: %v", err)
+	}
+	if !suppressed {
+		t.Fatal("expected suppression check to report true")
+	}
+}
+
 func TestStoreSupportsReplySubmissionLookup(t *testing.T) {
 	store := NewStore()
 

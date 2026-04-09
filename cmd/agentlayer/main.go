@@ -428,6 +428,7 @@ func newReplyService() outbound.Service {
 		outbound.NewRecorderWithStore(runtimeStore, runtimeStore, runtimeStore),
 		outbound.NewSender(newEmailProvider()),
 		outbound.NewStatusRecorder(messageStatusRepositoryAdapter{store: runtimeStore}),
+		suppressionCheckerAdapter{store: runtimeStore},
 		time.Now,
 	)
 }
@@ -914,6 +915,12 @@ type suppressionRepositoryAdapter struct{ store appStore }
 
 func (a suppressionRepositoryAdapter) Save(ctx context.Context, record domain.SuppressedAddress) (domain.SuppressedAddress, error) {
 	return a.store.SaveSuppression(ctx, record)
+}
+
+type suppressionCheckerAdapter struct{ store appStore }
+
+func (a suppressionCheckerAdapter) IsSuppressed(ctx context.Context, organizationID, emailAddress string) (bool, error) {
+	return a.store.IsSuppressed(ctx, organizationID, emailAddress)
 }
 
 type webhookDeliveryRepositoryAdapter struct{ store appStore }

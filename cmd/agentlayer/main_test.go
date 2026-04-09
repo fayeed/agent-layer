@@ -1240,6 +1240,45 @@ func TestReplyEndpointReusesExistingReplyForIdempotencyKey(t *testing.T) {
 	}
 }
 
+func TestReplyEndpointBlocksSuppressedRecipientIntegration(t *testing.T) {
+	runtimeStore = newRuntimeStore()
+	server := newServer()
+	seedReplyRuntimeState(t)
+
+	_, err := runtimeStore.SaveSuppression(context.Background(), domain.SuppressedAddress{
+		ID:             "suppression-123",
+		OrganizationID: "org-local",
+		EmailAddress:   "sender@example.com",
+		Reason:         "hard_bounce",
+		Source:         "ses",
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("expected suppression save to succeed, got error: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/threads/thread-123/reply", bytes.NewBufferString(`{
+		"reply_to_message_id":"message-inbound-123",
+		"body_text":"Thanks for reaching out.",
+		"object_key":"outbound/reply-http-123.eml"
+	}`))
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("expected suppressed reply endpoint to return conflict, got %d", recorder.Code)
+	}
+
+	messages, err := runtimeStore.ListByThreadID(context.Background(), "thread-123", 10)
+	if err != nil {
+		t.Fatalf("expected thread message list to succeed, got error: %v", err)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("expected suppressed reply to avoid persisting an outbound message, got %#v", messages)
+	}
+}
+
 func TestRunServersStartsHTTPAndSMTP(t *testing.T) {
 	httpServer := &serveStub{err: errors.New("http stopped"), started: make(chan struct{})}
 	smtpServer := &serveStub{err: errors.New("smtp stopped"), started: make(chan struct{})}

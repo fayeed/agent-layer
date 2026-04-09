@@ -410,6 +410,17 @@ func (s *Store) SaveSuppression(_ context.Context, record domain.SuppressedAddre
 	return record, nil
 }
 
+func (s *Store) IsSuppressed(_ context.Context, organizationID, emailAddress string) (bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, record := range s.suppressionsByID {
+		if record.OrganizationID == organizationID && record.EmailAddress == emailAddress {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (s *Store) SaveWebhookDelivery(_ context.Context, delivery domain.WebhookDelivery) (domain.WebhookDelivery, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

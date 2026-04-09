@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"github.com/agentlayer/agentlayer/internal/domain"
 	"github.com/agentlayer/agentlayer/internal/store"
@@ -33,4 +34,22 @@ func (s SuppressionStore) Save(ctx context.Context, record domain.SuppressedAddr
 		return domain.SuppressedAddress{}, err
 	}
 	return record, nil
+}
+
+func (s SuppressionStore) IsSuppressed(ctx context.Context, organizationID, emailAddress string) (bool, error) {
+	var suppressed bool
+	err := s.db.QueryRowContext(ctx, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM suppressed_addresses
+			WHERE organization_id = $1 AND email_address = $2
+		)
+	`, organizationID, emailAddress).Scan(&suppressed)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return suppressed, nil
 }

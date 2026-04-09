@@ -2,6 +2,7 @@ package outbound
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -49,6 +50,7 @@ func TestServiceAssemblesQueuesSendsAndRecordsReply(t *testing.T) {
 				DeliveryState:     DeliveryStateSent,
 			},
 		},
+		suppressionCheckerStub{},
 		func() time.Time { return queuedAt },
 	)
 
@@ -111,6 +113,7 @@ func TestServicePassesQueuedMessageIntoSenderAndStatusRecorder(t *testing.T) {
 		},
 		sender,
 		statuses,
+		suppressionCheckerStub{},
 		func() time.Time { return time.Date(2026, 4, 3, 9, 0, 0, 0, time.UTC) },
 	)
 
@@ -151,6 +154,25 @@ func TestServicePassesQueuedMessageIntoSenderAndStatusRecorder(t *testing.T) {
 
 	if statuses.input.Message.ID != "message-123" {
 		t.Fatalf("expected queued message to be passed into status recorder, got %#v", statuses.input)
+	}
+}
+
+func TestServiceBlocksSuppressedRecipient(t *testing.T) {
+	service := NewService(
+		assemblerStub{},
+		queueRecorderStub{},
+		senderStub{},
+		statusRecorderStub{},
+		suppressionCheckerStub{suppressed: true},
+		func() time.Time { return time.Date(2026, 4, 3, 9, 0, 0, 0, time.UTC) },
+	)
+
+	_, err := service.SendReply(context.Background(), SendReplyInput{
+		Organization: domain.Organization{ID: "org-123"},
+		Contact:      domain.Contact{EmailAddress: "sender@example.com"},
+	})
+	if !errors.Is(err, ErrRecipientSuppressed) {
+		t.Fatalf("expected suppressed recipient error, got %v", err)
 	}
 }
 
@@ -211,4 +233,13 @@ type capturingStatusRecorder struct {
 func (s *capturingStatusRecorder) RecordSent(_ context.Context, input RecordSentInput) (domain.Message, error) {
 	s.input = input
 	return s.result, s.err
+}
+
+type suppressionCheckerStub struct {
+	suppressed bool
+	err        error
+}
+
+func (s suppressionCheckerStub) IsSuppressed(context.Context, string, string) (bool, error) {
+	return s.suppressed, s.err
 }

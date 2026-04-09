@@ -165,6 +165,23 @@ func TestReplyHandlerReturnsNotFoundForMissingReplyContext(t *testing.T) {
 	}
 }
 
+func TestReplyHandlerReturnsConflictForSuppressedRecipient(t *testing.T) {
+	handler := NewReplyHandler(&replyServiceStub{err: outbound.ErrRecipientSuppressed})
+
+	request := httptest.NewRequest(http.MethodPost, "/threads/thread-123/reply", bytes.NewBufferString(`{
+		"reply_to_message_id":"message-100",
+		"body_text":"Thanks for reaching out.",
+		"object_key":"outbound/reply-123.eml"
+	}`))
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("expected conflict status for suppressed recipient, got %d", recorder.Code)
+	}
+}
+
 type replyServiceStub struct {
 	input  outbound.SendReplyInput
 	result outbound.SendReplyResult

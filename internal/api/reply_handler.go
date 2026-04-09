@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -83,6 +84,10 @@ func (h ReplyHandler) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		IdempotencyKey: payload.IdempotencyKey,
 	})
 	if err != nil {
+		if errors.Is(err, outbound.ErrRecipientSuppressed) {
+			http.Error(writer, "recipient is suppressed", http.StatusConflict)
+			return
+		}
 		writeLookupError(writer, err, "reply context not found", "failed to send reply")
 		return
 	}

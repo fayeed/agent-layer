@@ -2,6 +2,7 @@ package outbound
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/agentlayer/agentlayer/internal/core"
@@ -26,6 +27,12 @@ type StatusRecorderInterface interface {
 	RecordSent(ctx context.Context, input RecordSentInput) (domain.Message, error)
 }
 
+type SuppressionChecker interface {
+	IsSuppressed(ctx context.Context, organizationID, emailAddress string) (bool, error)
+}
+
+var ErrRecipientSuppressed = errors.New("recipient is suppressed")
+
 type SendReplyInput struct {
 	Organization   domain.Organization
 	Agent          domain.Agent
@@ -49,6 +56,7 @@ type Service struct {
 	queueRecorder  QueueRecorder
 	sender         SenderInterface
 	statusRecorder StatusRecorderInterface
+	suppressions   SuppressionChecker
 	now            Clock
 }
 
@@ -57,6 +65,7 @@ func NewService(
 	queueRecorder QueueRecorder,
 	sender SenderInterface,
 	statusRecorder StatusRecorderInterface,
+	suppressions SuppressionChecker,
 	now Clock,
 ) Service {
 	if now == nil {
@@ -68,11 +77,22 @@ func NewService(
 		queueRecorder:  queueRecorder,
 		sender:         sender,
 		statusRecorder: statusRecorder,
+		suppressions:   suppressions,
 		now:            now,
 	}
 }
 
 func (s Service) SendReply(ctx context.Context, input SendReplyInput) (SendReplyResult, error) {
+	if s.suppressions != nil {
+		suppressed, err := s.suppressions.IsSuppressed(ctx, input.Organization.ID, input.Contact.EmailAddress)
+		if err != nil {
+			return SendReplyResult{}, err
+		}
+		if suppressed {
+			return SendReplyResult{}, ErrRecipientSuppressed
+		}
+	}
+
 	rawMIME, metadata, err := s.assembler.AssembleReply(ReplyAssemblyInput{
 		Organization:   input.Organization,
 		Agent:          input.Agent,
