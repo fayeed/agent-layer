@@ -507,6 +507,66 @@ func TestBootstrapAndInboundFlowSkipsWebhookWhenAgentPaused(t *testing.T) {
 	}
 }
 
+func TestBootstrapAndInboundFlowDeduplicatesRepeatedInboundMessage(t *testing.T) {
+	runtimeStore = newRuntimeStore()
+	receivedCh, webhookServer := newWebhookCaptureServer()
+	defer webhookServer.Close()
+
+	server := newServer()
+	bootstrapLocalRuntime(t, server, webhookServer.URL, "active")
+
+	first, err := handleTestInboundMessage(t, "raw/duplicate-message-1.eml")
+	if err != nil {
+		t.Fatalf("expected first inbound runtime flow to succeed, got error: %v", err)
+	}
+
+	if first.Duplicate {
+		t.Fatalf("expected first inbound result not to be duplicate, got %#v", first)
+	}
+
+	received := waitForWebhook(t, receivedCh)
+	if received.Headers.Get("X-AgentLayer-Signature") == "" {
+		t.Fatalf("expected first webhook delivery to be signed, got %#v", received.Headers)
+	}
+
+	second, err := handleTestInboundMessage(t, "raw/duplicate-message-2.eml")
+	if err != nil {
+		t.Fatalf("expected duplicate inbound runtime flow to succeed, got error: %v", err)
+	}
+
+	if !second.Duplicate {
+		t.Fatalf("expected duplicate inbound result to be marked duplicate, got %#v", second)
+	}
+
+	if second.Message.ID != first.Message.ID {
+		t.Fatalf("expected duplicate inbound to reuse stored message, got first=%#v second=%#v", first.Message, second.Message)
+	}
+
+	select {
+	case duplicateWebhook := <-receivedCh:
+		t.Fatalf("expected duplicate inbound message to skip webhook redelivery, got %#v", duplicateWebhook)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	messages, err := runtimeStore.ListByThreadID(context.Background(), first.Thread.ID, 10)
+	if err != nil {
+		t.Fatalf("expected thread messages lookup to succeed, got error: %v", err)
+	}
+
+	if len(messages) != 1 {
+		t.Fatalf("expected one persisted inbound message after duplicate processing, got %#v", messages)
+	}
+
+	deliveries, err := runtimeStore.ListWebhookDeliveries(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("expected webhook delivery list to succeed, got error: %v", err)
+	}
+
+	if len(deliveries) != 1 {
+		t.Fatalf("expected one webhook delivery after duplicate processing, got %#v", deliveries)
+	}
+}
+
 func TestWebhookReplayFlowReplaysStoredDelivery(t *testing.T) {
 	runtimeStore = newRuntimeStore()
 	receivedCh, webhookServer := newWebhookCaptureServer()
