@@ -69,6 +69,31 @@ func TestBootstrapHandlerRejectsInvalidAgentStatus(t *testing.T) {
 	}
 }
 
+func TestBootstrapHandlerRequiresCoreFields(t *testing.T) {
+	handler := NewBootstrapHandler(&bootstrapServiceStub{})
+
+	tests := []struct {
+		body string
+	}{
+		{body: `{"agent_name":"Acme Agent","inbox_address":"agent@example.com","inbox_domain":"example.com","inbox_display_name":"Acme Inbox"}`},
+		{body: `{"organization_name":"Acme Support","inbox_address":"agent@example.com","inbox_domain":"example.com","inbox_display_name":"Acme Inbox"}`},
+		{body: `{"organization_name":"Acme Support","agent_name":"Acme Agent","inbox_domain":"example.com","inbox_display_name":"Acme Inbox"}`},
+		{body: `{"organization_name":"Acme Support","agent_name":"Acme Agent","inbox_address":"agent@example.com","inbox_display_name":"Acme Inbox"}`},
+		{body: `{"organization_name":"Acme Support","agent_name":"Acme Agent","inbox_address":"agent@example.com","inbox_domain":"example.com"}`},
+	}
+
+	for _, tt := range tests {
+		request := httptest.NewRequest(http.MethodPost, "/bootstrap", bytes.NewBufferString(tt.body))
+		recorder := httptest.NewRecorder()
+
+		handler.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("expected bad request status for body %s, got %d", tt.body, recorder.Code)
+		}
+	}
+}
+
 type bootstrapServiceStub struct {
 	input  BootstrapInput
 	result BootstrapResult

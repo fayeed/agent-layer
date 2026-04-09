@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -75,6 +76,64 @@ func TestOutboundCallbackHandlerRejectsInvalidPayload(t *testing.T) {
 
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected bad request status, got %d", recorder.Code)
+	}
+}
+
+func TestOutboundCallbackHandlerRequiresContactEmail(t *testing.T) {
+	handler := NewOutboundCallbackHandler(&callbackParserStub{}, &callbackFlowStub{})
+	request := httptest.NewRequest(http.MethodPost, "/provider/callbacks/outbound", bytes.NewBufferString(`{
+		"event_type":"delivered",
+		"provider_message_id":"ses-123",
+		"occurred_at":"2026-04-03T13:00:00Z"
+	}`))
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected bad request status, got %d", recorder.Code)
+	}
+}
+
+func TestOutboundCallbackHandlerReturnsNotFoundForUnknownProviderMessage(t *testing.T) {
+	handler := NewOutboundCallbackHandler(&callbackParserStub{
+		event: outbound.DeliveryCallbackEvent{
+			ProviderMessageID: "ses-unknown",
+			Status:            outbound.DeliveryStateDelivered,
+		},
+	}, &callbackFlowStub{err: outbound.ErrProviderMessageNotFound})
+
+	request := httptest.NewRequest(http.MethodPost, "/provider/callbacks/outbound", bytes.NewBufferString(`{
+		"event_type":"delivered",
+		"provider_message_id":"ses-unknown",
+		"occurred_at":"2026-04-03T13:00:00Z",
+		"contact_email":"sender@example.com"
+	}`))
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected not found status, got %d", recorder.Code)
+	}
+
+	handler = NewOutboundCallbackHandler(&callbackParserStub{
+		event: outbound.DeliveryCallbackEvent{
+			ProviderMessageID: "ses-unknown",
+			Status:            outbound.DeliveryStateDelivered,
+		},
+	}, &callbackFlowStub{err: errors.New("boom")})
+	request = httptest.NewRequest(http.MethodPost, "/provider/callbacks/outbound", bytes.NewBufferString(`{
+		"event_type":"delivered",
+		"provider_message_id":"ses-unknown",
+		"occurred_at":"2026-04-03T13:00:00Z",
+		"contact_email":"sender@example.com"
+	}`))
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("expected internal server error status, got %d", recorder.Code)
 	}
 }
 

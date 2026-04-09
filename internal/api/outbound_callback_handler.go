@@ -3,8 +3,10 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/agentlayer/agentlayer/internal/domain"
 	"github.com/agentlayer/agentlayer/internal/outbound"
@@ -53,6 +55,10 @@ func (h OutboundCallbackHandler) ServeHTTP(writer http.ResponseWriter, request *
 		http.Error(writer, "invalid json payload", http.StatusBadRequest)
 		return
 	}
+	if strings.TrimSpace(payload.ContactEmail) == "" {
+		http.Error(writer, "contact_email is required", http.StatusBadRequest)
+		return
+	}
 
 	event, err := h.parser.Parse(body)
 	if err != nil {
@@ -67,6 +73,10 @@ func (h OutboundCallbackHandler) ServeHTTP(writer http.ResponseWriter, request *
 		},
 	})
 	if err != nil {
+		if errors.Is(err, outbound.ErrProviderMessageNotFound) {
+			http.Error(writer, "provider message not found", http.StatusNotFound)
+			return
+		}
 		http.Error(writer, "failed to apply callback", http.StatusInternalServerError)
 		return
 	}

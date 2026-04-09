@@ -104,7 +104,7 @@ func TestNewServerWiresRemainingHandlers(t *testing.T) {
 		want   int
 	}{
 		{method: http.MethodGet, path: "/bootstrap", want: http.StatusOK},
-		{method: http.MethodPost, path: "/bootstrap", body: "{}", want: http.StatusCreated},
+		{method: http.MethodPost, path: "/bootstrap", body: "{}", want: http.StatusBadRequest},
 		{method: http.MethodGet, path: "/webhooks/deliveries", want: http.StatusOK},
 		{method: http.MethodGet, path: "/webhooks/deliveries/delivery-123", want: http.StatusNotFound},
 		{method: http.MethodPost, path: "/webhooks/deliveries/delivery-123/replay", want: http.StatusNotFound},

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/agentlayer/agentlayer/internal/domain"
 )
@@ -51,6 +52,26 @@ func (h BootstrapHandler) ServeHTTP(writer http.ResponseWriter, request *http.Re
 	var payload BootstrapInput
 	if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
 		http.Error(writer, "invalid json payload", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(payload.OrganizationName) == "" {
+		http.Error(writer, "organization_name is required", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(payload.AgentName) == "" {
+		http.Error(writer, "agent_name is required", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(payload.InboxAddress) == "" {
+		http.Error(writer, "inbox_address is required", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(payload.InboxDomain) == "" {
+		http.Error(writer, "inbox_domain is required", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(payload.InboxDisplayName) == "" {
+		http.Error(writer, "inbox_display_name is required", http.StatusBadRequest)
 		return
 	}
 
