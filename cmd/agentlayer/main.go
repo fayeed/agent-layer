@@ -124,13 +124,15 @@ func newRuntimeStore() *memorystore.Store {
 func newSMTPServer() *smtp.Server {
 	return smtpedge.NewServer(
 		smtpedge.NewBackend(func() smtpedge.CoreSession {
+			now := time.Now().UTC()
+			sessionID := smtpedge.NewSessionID(now)
 			session := smtpedge.NewSession(
 				runtimeStore,
 				runtimeStore,
 				smtpedge.NewReceiptSink(newInboundService()),
-				time.Now,
-				func() string { return "raw/generated.eml" },
-				"smtp-session-placeholder",
+				func() time.Time { return now },
+				func() string { return smtpedge.NewRawMessageObjectKey(now, "inbox-local") },
+				sessionID,
 			)
 			return &session
 		}),

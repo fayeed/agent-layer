@@ -18,6 +18,7 @@ import (
 	"github.com/agentlayer/agentlayer/internal/domain"
 	"github.com/agentlayer/agentlayer/internal/inbound"
 	"github.com/agentlayer/agentlayer/internal/outbound"
+	"github.com/agentlayer/agentlayer/internal/smtpedge"
 )
 
 func TestNewServerExposesHealthEndpoint(t *testing.T) {
@@ -170,6 +171,23 @@ func TestSMTPAddressHelpers(t *testing.T) {
 
 	if got := smtpDomain(); got != "smtp.example.com" {
 		t.Fatalf("expected smtp domain helper to read env, got %q", got)
+	}
+}
+
+func TestSMTPReceiptIdentifierHelpers(t *testing.T) {
+	now := time.Date(2026, 4, 9, 12, 34, 56, 123456789, time.UTC)
+
+	sessionID := smtpedge.NewSessionID(now)
+	if !strings.HasPrefix(sessionID, "smtp-20260409T123456.123456789Z-") {
+		t.Fatalf("expected generated smtp session id, got %q", sessionID)
+	}
+
+	objectKey := smtpedge.NewRawMessageObjectKey(now, "inbox-local")
+	if !strings.HasPrefix(objectKey, "raw/2026/04/09/inbox-local/") {
+		t.Fatalf("expected generated raw message object key, got %q", objectKey)
+	}
+	if !strings.HasSuffix(objectKey, ".eml") {
+		t.Fatalf("expected eml suffix for raw object key, got %q", objectKey)
 	}
 }
 
