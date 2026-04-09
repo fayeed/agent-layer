@@ -1,0 +1,17 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agentlayer-postgres
+    environment:
+      POSTGRES_DB: agentlayer
+      POSTGRES_USER: agentlayer
+      POSTGRES_PASSWORD: agentlayer
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./.agentlayer-data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentlayer -d agentlayer"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

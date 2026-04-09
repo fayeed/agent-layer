@@ -37,6 +37,12 @@ Optional env vars:
 - `AGENTLAYER_RAW_DATA_DIR`
 - `AGENTLAYER_AUTO_MIGRATE`
 
+Helper files in the repo:
+
+- [`compose.yaml`](/home/fayeed/dev/agent-layer/compose.yaml)
+- [`.env.example`](/home/fayeed/dev/agent-layer/.env.example)
+- [`Makefile`](/home/fayeed/dev/agent-layer/Makefile)
+
 ## Postgres Mode
 
 The server can now run with Postgres-backed structured state and local filesystem raw MIME storage.
@@ -51,11 +57,19 @@ export AGENTLAYER_AUTO_MIGRATE='true'
 go run ./cmd/agentlayer
 ```
 
+Or use the local helpers:
+
+```bash
+make postgres-up
+make run-postgres
+```
+
 Notes:
 
 - `AGENTLAYER_AUTO_MIGRATE=true` applies the embedded `db/migrations/0001_v0_core.sql` schema on startup.
 - Raw MIME files are written under `AGENTLAYER_RAW_DATA_DIR`.
 - If `AGENTLAYER_DATABASE_URL` is unset, the server falls back to the in-memory runtime store.
+- The bundled Postgres container uses database `agentlayer` with user/password `agentlayer`.
 
 ## Local Walkthrough
 
