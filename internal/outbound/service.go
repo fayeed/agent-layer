@@ -106,7 +106,9 @@ func (s Service) SendReply(ctx context.Context, input SendReplyInput) (SendReply
 		Agent:        input.Agent,
 		Inbox:        input.Inbox,
 		Thread:       queued.Thread,
+		Contact:      input.Contact,
 		Message:      queued.Message,
+		RawMIME:      []byte(rawMIME),
 	})
 	if err != nil {
 		return SendReplyResult{}, err

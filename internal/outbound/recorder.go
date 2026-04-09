@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"time"
 
 	"github.com/agentlayer/agentlayer/internal/domain"
@@ -17,6 +18,10 @@ type MessageRepository interface {
 
 type ThreadRepository interface {
 	Save(ctx context.Context, thread domain.Thread) (domain.Thread, error)
+}
+
+type RawMessageStore interface {
+	Put(ctx context.Context, objectKey string, data []byte) error
 }
 
 type RecordQueuedReplyInput struct {
@@ -40,6 +45,7 @@ type RecordQueuedReplyResult struct {
 type Recorder struct {
 	messages MessageRepository
 	threads  ThreadRepository
+	raw      RawMessageStore
 }
 
 func NewRecorder(messages MessageRepository) Recorder {
@@ -55,7 +61,24 @@ func NewRecorderWithThreads(messages MessageRepository, threads ThreadRepository
 	}
 }
 
+func NewRecorderWithStore(messages MessageRepository, threads ThreadRepository, raw RawMessageStore) Recorder {
+	return Recorder{
+		messages: messages,
+		threads:  threads,
+		raw:      raw,
+	}
+}
+
 func (r Recorder) RecordQueuedReply(ctx context.Context, input RecordQueuedReplyInput) (RecordQueuedReplyResult, error) {
+	if r.raw != nil {
+		if input.ObjectKey == "" {
+			return RecordQueuedReplyResult{}, errors.New("object key is required")
+		}
+		if err := r.raw.Put(ctx, input.ObjectKey, []byte(input.RawMIME)); err != nil {
+			return RecordQueuedReplyResult{}, err
+		}
+	}
+
 	message, err := r.messages.Create(ctx, domain.Message{
 		ID:               newOutboundMessageID(),
 		OrganizationID:   input.Organization.ID,

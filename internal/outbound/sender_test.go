@@ -33,12 +33,17 @@ func TestSenderCallsProviderWithOutboundContext(t *testing.T) {
 		Thread: domain.Thread{
 			ID: "thread-123",
 		},
+		Contact: domain.Contact{
+			ID:           "contact-123",
+			EmailAddress: "sender@example.com",
+		},
 		Message: domain.Message{
 			ID:              "message-123",
 			ThreadID:        "thread-123",
 			MessageIDHeader: "<reply-123@agentlayer.local>",
 			DeliveryState:   DeliveryStateQueued,
 		},
+		RawMIME: []byte("raw mime"),
 	})
 	if err != nil {
 		t.Fatalf("expected send to succeed, got error: %v", err)
@@ -46,6 +51,12 @@ func TestSenderCallsProviderWithOutboundContext(t *testing.T) {
 
 	if provider.request.Message.ID != "message-123" {
 		t.Fatalf("expected provider to receive outbound message, got %#v", provider.request)
+	}
+	if provider.request.Contact.EmailAddress != "sender@example.com" {
+		t.Fatalf("expected provider to receive contact context, got %#v", provider.request)
+	}
+	if string(provider.request.RawMIME) != "raw mime" {
+		t.Fatalf("expected provider to receive raw mime, got %#v", provider.request)
 	}
 
 	if result.ProviderMessageID != "ses-123" {

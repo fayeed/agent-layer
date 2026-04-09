@@ -15,6 +15,10 @@ The repository is being built in small, commit-friendly slices so core contracts
 
 ## Local Dev
 
+Go version:
+
+- Go `1.24+` is now required because the SES provider uses the latest `aws-sdk-go-v2` packages.
+
 Run the current V0 server:
 
 ```bash
@@ -36,6 +40,8 @@ Optional env vars:
 - `AGENTLAYER_DATABASE_URL`
 - `AGENTLAYER_RAW_DATA_DIR`
 - `AGENTLAYER_AUTO_MIGRATE`
+- `AGENTLAYER_EMAIL_PROVIDER`
+- `AWS_REGION`
 
 Helper files in the repo:
 
@@ -73,6 +79,24 @@ Notes:
 - Raw MIME files are written under `AGENTLAYER_RAW_DATA_DIR`.
 - If `AGENTLAYER_DATABASE_URL` is unset, the server falls back to the in-memory runtime store.
 - The bundled Postgres container uses database `agentlayer` with user/password `agentlayer`.
+
+## Email Provider Mode
+
+The runtime currently supports:
+
+- `AGENTLAYER_EMAIL_PROVIDER=dev`
+- `AGENTLAYER_EMAIL_PROVIDER=ses`
+
+SES mode uses the latest `aws-sdk-go-v2` client and expects standard AWS credentials plus `AWS_REGION`.
+
+Example:
+
+```bash
+export AGENTLAYER_EMAIL_PROVIDER='ses'
+export AWS_REGION='us-east-1'
+
+go run ./cmd/agentlayer
+```
 
 ## Local Walkthrough
 

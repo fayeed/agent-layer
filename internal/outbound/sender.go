@@ -18,7 +18,9 @@ type SendQueuedReplyInput struct {
 	Agent        domain.Agent
 	Inbox        domain.Inbox
 	Thread       domain.Thread
+	Contact      domain.Contact
 	Message      domain.Message
+	RawMIME      []byte
 }
 
 type Sender struct {
@@ -35,6 +37,8 @@ func (s Sender) SendQueuedReply(ctx context.Context, input SendQueuedReplyInput)
 		Agent:        input.Agent,
 		Inbox:        input.Inbox,
 		Thread:       input.Thread,
+		Contact:      input.Contact,
 		Message:      input.Message,
+		RawMIME:      input.RawMIME,
 	})
 }

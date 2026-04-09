@@ -18,6 +18,7 @@ import (
 	"github.com/agentlayer/agentlayer/internal/outbound"
 	"github.com/agentlayer/agentlayer/internal/parser"
 	devprovider "github.com/agentlayer/agentlayer/internal/providers/dev"
+	sesprovider "github.com/agentlayer/agentlayer/internal/providers/ses"
 	"github.com/agentlayer/agentlayer/internal/smtpedge"
 	"github.com/agentlayer/agentlayer/internal/store/blobfs"
 	memorystore "github.com/agentlayer/agentlayer/internal/store/memory"
@@ -114,6 +115,17 @@ func rawDataDir() string {
 		return value
 	}
 	return ".agentlayer-data/raw"
+}
+
+func emailProviderType() string {
+	if value := os.Getenv("AGENTLAYER_EMAIL_PROVIDER"); value != "" {
+		return value
+	}
+	return "dev"
+}
+
+func awsRegion() string {
+	return os.Getenv("AWS_REGION")
 }
 
 func autoMigrateEnabled() bool {
@@ -382,11 +394,24 @@ func newInboundRecorder() inbound.Recorder {
 func newReplyService() outbound.Service {
 	return outbound.NewService(
 		outbound.NewAssembler(func() string { return "<generated@agentlayer.local>" }),
-		outbound.NewRecorderWithThreads(runtimeStore, runtimeStore),
-		outbound.NewSender(devprovider.NewEmailProvider(time.Now)),
+		outbound.NewRecorderWithStore(runtimeStore, runtimeStore, runtimeStore),
+		outbound.NewSender(newEmailProvider()),
 		outbound.NewStatusRecorder(messageStatusRepositoryAdapter{store: runtimeStore}),
 		time.Now,
 	)
+}
+
+func newEmailProvider() outbound.EmailProvider {
+	switch emailProviderType() {
+	case "ses":
+		provider, err := sesprovider.NewEmailProvider(context.Background(), awsRegion(), time.Now)
+		if err != nil {
+			panic(err)
+		}
+		return provider
+	default:
+		return devprovider.NewEmailProvider(time.Now)
+	}
 }
 
 func newReplyHandlerService() api.ReplyService {

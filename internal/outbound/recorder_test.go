@@ -104,6 +104,31 @@ func TestRecorderUpdatesThreadLastOutboundPointer(t *testing.T) {
 	}
 }
 
+func TestRecorderPersistsRawMIMEWhenStoreIsConfigured(t *testing.T) {
+	messages := &messageRepositoryStub{}
+	raw := &rawMessageStoreStub{}
+	recorder := NewRecorderWithStore(messages, nil, raw)
+
+	_, err := recorder.RecordQueuedReply(context.Background(), RecordQueuedReplyInput{
+		Organization: domain.Organization{ID: "org-123"},
+		Agent:        domain.Agent{ID: "agent-123"},
+		Inbox:        domain.Inbox{ID: "inbox-123"},
+		Thread:       domain.Thread{ID: "thread-123"},
+		Contact:      domain.Contact{ID: "contact-123"},
+		Metadata:     ReplyMetadata{MessageIDHeader: "<reply-123@agentlayer.local>", Subject: "Re: Hello"},
+		RawMIME:      "raw mime",
+		ObjectKey:    "outbound/reply-123.eml",
+		QueuedAt:     time.Date(2026, 4, 3, 7, 5, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("expected raw mime persistence to succeed, got error: %v", err)
+	}
+
+	if raw.objectKey != "outbound/reply-123.eml" || string(raw.data) != "raw mime" {
+		t.Fatalf("expected raw mime to be stored, got %#v", raw)
+	}
+}
+
 type messageRepositoryStub struct {
 	created  domain.Message
 	returned domain.Message
@@ -127,4 +152,15 @@ type threadRepositoryStub struct {
 func (s *threadRepositoryStub) Save(_ context.Context, thread domain.Thread) (domain.Thread, error) {
 	s.saved = thread
 	return thread, nil
+}
+
+type rawMessageStoreStub struct {
+	objectKey string
+	data      []byte
+}
+
+func (s *rawMessageStoreStub) Put(_ context.Context, objectKey string, data []byte) error {
+	s.objectKey = objectKey
+	s.data = append([]byte(nil), data...)
+	return nil
 }

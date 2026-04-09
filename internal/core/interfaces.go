@@ -96,7 +96,9 @@ type OutboundSendRequest struct {
 	Agent        domain.Agent
 	Inbox        domain.Inbox
 	Thread       domain.Thread
+	Contact      domain.Contact
 	Message      domain.Message
+	RawMIME      []byte
 }
 
 type SendResult struct {

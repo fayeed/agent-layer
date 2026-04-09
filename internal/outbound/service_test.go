@@ -142,6 +142,12 @@ func TestServicePassesQueuedMessageIntoSenderAndStatusRecorder(t *testing.T) {
 	if sender.input.Message.ID != "message-123" {
 		t.Fatalf("expected queued message to be sent, got %#v", sender.input)
 	}
+	if sender.input.Contact.ID != "contact-123" {
+		t.Fatalf("expected contact to be passed into sender, got %#v", sender.input)
+	}
+	if string(sender.input.RawMIME) != "mime-body" {
+		t.Fatalf("expected raw mime to be passed into sender, got %#v", sender.input)
+	}
 
 	if statuses.input.Message.ID != "message-123" {
 		t.Fatalf("expected queued message to be passed into status recorder, got %#v", statuses.input)
