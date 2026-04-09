@@ -42,7 +42,7 @@ func main() {
 	log.Printf("agentlayer http listening on %s", httpAddr)
 	log.Printf("agentlayer smtp configured on %s", smtpServer.Addr)
 
-	if err := runServers(httpServer, smtpServer); err != nil {
+	if err := runServers(httpServer, smtpServer, newWebhookRetryWorker()); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -494,8 +494,17 @@ func newWebhookReplayService() webhooks.ReplayService {
 	)
 }
 
-func runServers(httpServer serveServer, smtpServer serveServer) error {
+func runServers(httpServer serveServer, smtpServer serveServer, workers ...backgroundWorker) error {
 	errCh := make(chan error, 2)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	for _, worker := range workers {
+		if worker == nil {
+			continue
+		}
+		go worker.Run(ctx)
+	}
 
 	go func() {
 		errCh <- httpServer.ListenAndServe()

@@ -1243,14 +1243,16 @@ func TestReplyEndpointReusesExistingReplyForIdempotencyKey(t *testing.T) {
 func TestRunServersStartsHTTPAndSMTP(t *testing.T) {
 	httpServer := &serveStub{err: errors.New("http stopped"), started: make(chan struct{})}
 	smtpServer := &serveStub{err: errors.New("smtp stopped"), started: make(chan struct{})}
+	worker := &workerStub{started: make(chan struct{}), done: make(chan struct{})}
 
 	done := make(chan error, 1)
 	go func() {
-		done <- runServers(httpServer, smtpServer)
+		done <- runServers(httpServer, smtpServer, worker)
 	}()
 
 	<-httpServer.started
 	<-smtpServer.started
+	<-worker.started
 	err := <-done
 	if err == nil {
 		t.Fatal("expected runServers to return an error")
@@ -1262,6 +1264,12 @@ func TestRunServersStartsHTTPAndSMTP(t *testing.T) {
 
 	if smtpServer.calls != 1 {
 		t.Fatalf("expected smtp server to start once, got %d", smtpServer.calls)
+	}
+
+	select {
+	case <-worker.done:
+	case <-time.After(time.Second):
+		t.Fatal("expected background worker to stop after server error")
 	}
 }
 
@@ -1429,4 +1437,19 @@ func (s *serveStub) ListenAndServe() error {
 		time.Sleep(s.delay)
 	}
 	return s.err
+}
+
+type workerStub struct {
+	started chan struct{}
+	done    chan struct{}
+}
+
+func (w *workerStub) Run(ctx context.Context) {
+	if w.started != nil {
+		close(w.started)
+	}
+	<-ctx.Done()
+	if w.done != nil {
+		close(w.done)
+	}
 }
