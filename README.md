@@ -168,7 +168,9 @@ Or with the bundled helpers:
 
 ```bash
 make bootstrap-local
+make ready-local
 make show-local
+make retry-webhooks-local
 make send-sample
 ```
 
@@ -186,15 +188,24 @@ Replay a stored webhook delivery:
 curl -X POST http://localhost:8080/webhooks/deliveries/<delivery-id>/replay
 ```
 
+Check readiness and trigger a manual retry sweep:
+
+```bash
+curl http://localhost:8080/readyz
+curl -X POST 'http://localhost:8080/webhooks/deliveries/retry?limit=20'
+```
+
 Current local admin/runtime endpoints:
 
 - `GET /healthz`
+- `GET /readyz`
 - `GET /bootstrap`
 - `POST /bootstrap`
 - `GET /inbound/receipts`
 - `GET /inbound/receipts/list`
 - `POST /inbound/reprocess`
 - `GET /webhooks/deliveries`
+- `POST /webhooks/deliveries/retry`
 - `GET /webhooks/deliveries/{deliveryID}`
 - `POST /webhooks/deliveries/{deliveryID}/replay`
 - `GET /threads/{threadID}`

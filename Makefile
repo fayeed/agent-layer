@@ -1,4 +1,4 @@
-.PHONY: postgres-up postgres-down runtime-up runtime-down run run-postgres run-postgres-s3 bootstrap-local show-local send-sample test
+.PHONY: postgres-up postgres-down runtime-up runtime-down run run-postgres run-postgres-s3 bootstrap-local ready-local show-local retry-webhooks-local send-sample test
 
 postgres-up:
 	docker compose up -d postgres
@@ -24,8 +24,14 @@ run-postgres-s3:
 bootstrap-local:
 	go run ./cmd/agentlayerctl bootstrap
 
+ready-local:
+	go run ./cmd/agentlayerctl ready
+
 show-local:
 	go run ./cmd/agentlayerctl show
+
+retry-webhooks-local:
+	go run ./cmd/agentlayerctl retry-webhooks
 
 send-sample:
 	go run ./cmd/agentlayerctl send-sample

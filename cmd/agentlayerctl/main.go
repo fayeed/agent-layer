@@ -24,8 +24,16 @@ func main() {
 		if err := runBootstrap(os.Args[2:]); err != nil {
 			fatal(err)
 		}
+	case "ready":
+		if err := runReady(os.Args[2:]); err != nil {
+			fatal(err)
+		}
 	case "show":
 		if err := runShow(os.Args[2:]); err != nil {
+			fatal(err)
+		}
+	case "retry-webhooks":
+		if err := runRetryWebhooks(os.Args[2:]); err != nil {
 			fatal(err)
 		}
 	case "send-sample":
@@ -39,7 +47,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, "usage: agentlayerctl <bootstrap|show|send-sample> [flags]\n")
+	fmt.Fprintf(os.Stderr, "usage: agentlayerctl <bootstrap|ready|show|retry-webhooks|send-sample> [flags]\n")
 }
 
 func fatal(err error) {
@@ -63,13 +71,13 @@ func runBootstrap(args []string) error {
 	}
 
 	payload := map[string]string{
-		"organization_name": *orgName,
-		"agent_name":        *agentName,
-		"agent_status":      *agentStatus,
-		"webhook_url":       *webhookURL,
-		"webhook_secret":    *webhookSecret,
-		"inbox_address":     *inboxAddress,
-		"inbox_domain":      *inboxDomain,
+		"organization_name":  *orgName,
+		"agent_name":         *agentName,
+		"agent_status":       *agentStatus,
+		"webhook_url":        *webhookURL,
+		"webhook_secret":     *webhookSecret,
+		"inbox_address":      *inboxAddress,
+		"inbox_domain":       *inboxDomain,
 		"inbox_display_name": *inboxDisplayName,
 	}
 	return printJSONRequest(http.MethodPost, strings.TrimRight(*baseURL, "/")+"/bootstrap", payload)
@@ -85,6 +93,7 @@ func runShow(args []string) error {
 	}
 
 	for _, endpoint := range []string{
+		"/readyz",
 		"/bootstrap",
 		fmt.Sprintf("/webhooks/deliveries?limit=%d", *webhookLimit),
 		fmt.Sprintf("/inbound/receipts/list?limit=%d", *receiptLimit),
@@ -98,6 +107,39 @@ func runShow(args []string) error {
 		}
 	}
 	return nil
+}
+
+func runReady(args []string) error {
+	fs := flag.NewFlagSet("ready", flag.ContinueOnError)
+	baseURL := fs.String("base-url", envOrDefault("AGENTLAYER_BASE_URL", "http://localhost:8080"), "")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	resp, err := http.Get(strings.TrimRight(*baseURL, "/") + "/readyz")
+	if err != nil {
+		return err
+	}
+	return printResponse("/readyz", resp)
+}
+
+func runRetryWebhooks(args []string) error {
+	fs := flag.NewFlagSet("retry-webhooks", flag.ContinueOnError)
+	baseURL := fs.String("base-url", envOrDefault("AGENTLAYER_BASE_URL", "http://localhost:8080"), "")
+	limit := fs.Int("limit", envIntOrDefault("AGENTLAYER_WEBHOOK_RETRY_LIMIT", 20), "")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/webhooks/deliveries/retry?limit=%d", strings.TrimRight(*baseURL, "/"), *limit), nil)
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	return printResponse("/webhooks/deliveries/retry", resp)
 }
 
 func runSendSample(args []string) error {

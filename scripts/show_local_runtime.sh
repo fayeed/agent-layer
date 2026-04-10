@@ -6,6 +6,10 @@ BASE_URL="${AGENTLAYER_BASE_URL:-http://localhost:8080}"
 WEBHOOK_LIMIT="${AGENTLAYER_WEBHOOK_LIMIT:-5}"
 RECEIPT_LIMIT="${AGENTLAYER_RECEIPT_LIMIT:-5}"
 
+printf '\n== readiness ==\n'
+curl --fail-with-body "${BASE_URL}/readyz"
+printf '\n\n'
+
 printf '\n== bootstrap ==\n'
 curl --fail-with-body "${BASE_URL}/bootstrap"
 printf '\n\n== webhook deliveries ==\n'
