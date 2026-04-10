@@ -72,6 +72,8 @@ func newServer() http.Handler {
 	mux.Handle("GET /threads/{threadID}/messages", api.NewThreadMessagesHandler(newThreadMessagesReadService()))
 	mux.Handle("GET /contacts/{contactID}", api.NewContactHandler(newContactReadService()))
 	mux.Handle("POST /contacts/{contactID}/memory", api.NewContactMemoryHandler(newContactMemoryHandlerService()))
+	mux.Handle("GET /suppressions", api.NewSuppressionsHandler(newSuppressionsHandlerService()))
+	mux.Handle("GET /suppressions/{suppressionID}", api.NewSuppressionHandler(newSuppressionHandlerService()))
 	mux.Handle("POST /provider/callbacks/outbound", api.NewOutboundCallbackHandler(outbound.NewCallbackParser(), newOutboundCallbackFlow()))
 	return mux
 }
@@ -458,6 +460,22 @@ func newContactMemoryHandlerService() api.ContactMemoryService {
 	}
 }
 
+func newSuppressionReadService() app.SuppressionReadService {
+	return app.NewSuppressionReadService(suppressionGetterAdapter{store: runtimeStore})
+}
+
+func newSuppressionListService() app.SuppressionListService {
+	return app.NewSuppressionListService(suppressionGetterAdapter{store: runtimeStore}, 20)
+}
+
+func newSuppressionsHandlerService() api.SuppressionsService {
+	return suppressionListServiceAdapter{service: newSuppressionListService()}
+}
+
+func newSuppressionHandlerService() api.SuppressionService {
+	return suppressionReadServiceAdapter{service: newSuppressionReadService()}
+}
+
 func newBootstrapService() app.BootstrapService {
 	return app.NewBootstrapService(runtimeStore, runtimeStore, runtimeStore, time.Now)
 }
@@ -760,6 +778,14 @@ type webhookDeliveryReadServiceAdapter struct {
 	service app.WebhookDeliveryReadService
 }
 
+type suppressionListServiceAdapter struct {
+	service app.SuppressionListService
+}
+
+type suppressionReadServiceAdapter struct {
+	service app.SuppressionReadService
+}
+
 type webhookRetryServiceAdapter struct {
 	service webhooks.RetrySweepService
 }
@@ -960,6 +986,14 @@ func (a webhookDeliveryReadServiceAdapter) GetWebhookDelivery(ctx context.Contex
 	return a.service.GetWebhookDelivery(ctx, deliveryID)
 }
 
+func (a suppressionListServiceAdapter) ListSuppressions(ctx context.Context, limit int) ([]domain.SuppressedAddress, error) {
+	return a.service.ListSuppressions(ctx, limit)
+}
+
+func (a suppressionReadServiceAdapter) GetSuppression(ctx context.Context, suppressionID string) (domain.SuppressedAddress, error) {
+	return a.service.GetSuppression(ctx, suppressionID)
+}
+
 func (a webhookRetryServiceAdapter) RetryDueDeliveries(ctx context.Context, limit int) (api.WebhookRetryResult, error) {
 	result, err := a.service.RetryDueDeliveries(ctx, limit)
 	if err != nil {
@@ -1013,6 +1047,16 @@ type suppressionCheckerAdapter struct{ store appStore }
 
 func (a suppressionCheckerAdapter) IsSuppressed(ctx context.Context, organizationID, emailAddress string) (bool, error) {
 	return a.store.IsSuppressed(ctx, organizationID, emailAddress)
+}
+
+type suppressionGetterAdapter struct{ store appStore }
+
+func (a suppressionGetterAdapter) GetSuppressionByID(ctx context.Context, suppressionID string) (domain.SuppressedAddress, error) {
+	return a.store.GetSuppressionByID(ctx, suppressionID)
+}
+
+func (a suppressionGetterAdapter) ListSuppressions(ctx context.Context, limit int) ([]domain.SuppressedAddress, error) {
+	return a.store.ListSuppressions(ctx, limit)
 }
 
 type webhookDeliveryRepositoryAdapter struct{ store appStore }

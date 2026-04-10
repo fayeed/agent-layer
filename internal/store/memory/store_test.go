@@ -282,6 +282,40 @@ func TestStoreChecksSuppressedAddresses(t *testing.T) {
 	}
 }
 
+func TestStoreGetsAndListsSuppressions(t *testing.T) {
+	store := NewStore()
+	now := time.Date(2026, 4, 10, 10, 0, 0, 0, time.UTC)
+
+	_, _ = store.SaveSuppression(context.Background(), domain.SuppressedAddress{
+		ID:             "suppression-older",
+		OrganizationID: "org-123",
+		EmailAddress:   "older@example.com",
+		UpdatedAt:      now,
+	})
+	_, _ = store.SaveSuppression(context.Background(), domain.SuppressedAddress{
+		ID:             "suppression-newer",
+		OrganizationID: "org-123",
+		EmailAddress:   "newer@example.com",
+		UpdatedAt:      now.Add(time.Minute),
+	})
+
+	record, err := store.GetSuppressionByID(context.Background(), "suppression-newer")
+	if err != nil {
+		t.Fatalf("expected suppression get to succeed, got error: %v", err)
+	}
+	if record.EmailAddress != "newer@example.com" {
+		t.Fatalf("expected suppression record, got %#v", record)
+	}
+
+	list, err := store.ListSuppressions(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("expected suppression list to succeed, got error: %v", err)
+	}
+	if len(list) != 1 || list[0].ID != "suppression-newer" {
+		t.Fatalf("expected suppression list result, got %#v", list)
+	}
+}
+
 func TestStoreSupportsReplySubmissionLookup(t *testing.T) {
 	store := NewStore()
 

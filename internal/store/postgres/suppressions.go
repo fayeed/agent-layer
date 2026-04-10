@@ -53,3 +53,66 @@ func (s SuppressionStore) IsSuppressed(ctx context.Context, organizationID, emai
 	}
 	return suppressed, nil
 }
+
+func (s SuppressionStore) GetByID(ctx context.Context, suppressionID string) (domain.SuppressedAddress, error) {
+	var model store.SuppressedAddressModel
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, organization_id, email_address, reason, source, created_at, updated_at
+		FROM suppressed_addresses
+		WHERE id = $1
+	`, suppressionID).Scan(
+		&model.ID,
+		&model.OrganizationID,
+		&model.EmailAddress,
+		&model.Reason,
+		&model.Source,
+		&model.CreatedAt,
+		&model.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.SuppressedAddress{}, domain.ErrNotFound
+		}
+		return domain.SuppressedAddress{}, err
+	}
+	return store.SuppressedAddressFromModel(model), nil
+}
+
+func (s SuppressionStore) List(ctx context.Context, limit int) ([]domain.SuppressedAddress, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, organization_id, email_address, reason, source, created_at, updated_at
+		FROM suppressed_addresses
+		ORDER BY updated_at DESC, id DESC
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []domain.SuppressedAddress
+	for rows.Next() {
+		var model store.SuppressedAddressModel
+		if err := rows.Scan(
+			&model.ID,
+			&model.OrganizationID,
+			&model.EmailAddress,
+			&model.Reason,
+			&model.Source,
+			&model.CreatedAt,
+			&model.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, store.SuppressedAddressFromModel(model))
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}

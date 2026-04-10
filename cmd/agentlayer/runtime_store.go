@@ -42,6 +42,8 @@ type appStore interface {
 	ListMemoryByContactID(ctx context.Context, contactID string, limit int) ([]domain.ContactMemoryEntry, error)
 	SaveSuppression(ctx context.Context, record domain.SuppressedAddress) (domain.SuppressedAddress, error)
 	IsSuppressed(ctx context.Context, organizationID, emailAddress string) (bool, error)
+	GetSuppressionByID(ctx context.Context, suppressionID string) (domain.SuppressedAddress, error)
+	ListSuppressions(ctx context.Context, limit int) ([]domain.SuppressedAddress, error)
 	SaveWebhookDelivery(ctx context.Context, delivery domain.WebhookDelivery) (domain.WebhookDelivery, error)
 	GetWebhookDeliveryByID(ctx context.Context, deliveryID string) (domain.WebhookDelivery, error)
 	ListWebhookDeliveries(ctx context.Context, limit int) ([]domain.WebhookDelivery, error)
@@ -179,6 +181,12 @@ func (s *postgresRuntimeStore) SaveSuppression(ctx context.Context, record domai
 }
 func (s *postgresRuntimeStore) IsSuppressed(ctx context.Context, organizationID, emailAddress string) (bool, error) {
 	return s.suppressions.IsSuppressed(ctx, organizationID, emailAddress)
+}
+func (s *postgresRuntimeStore) GetSuppressionByID(ctx context.Context, suppressionID string) (domain.SuppressedAddress, error) {
+	return s.suppressions.GetByID(ctx, suppressionID)
+}
+func (s *postgresRuntimeStore) ListSuppressions(ctx context.Context, limit int) ([]domain.SuppressedAddress, error) {
+	return s.suppressions.List(ctx, limit)
 }
 func (s *postgresRuntimeStore) SaveWebhookDelivery(ctx context.Context, delivery domain.WebhookDelivery) (domain.WebhookDelivery, error) {
 	return s.webhooks.SaveWebhookDelivery(ctx, delivery)

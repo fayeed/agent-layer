@@ -79,6 +79,7 @@ func TestNewServerRegistersV0RouteShapes(t *testing.T) {
 		{method: http.MethodPost, path: "/threads/thread-123/reply"},
 		{method: http.MethodPost, path: "/threads/thread-123/escalate"},
 		{method: http.MethodGet, path: "/threads/thread-123/messages"},
+		{method: http.MethodGet, path: "/suppressions"},
 		{method: http.MethodPost, path: "/contacts/contact-123/memory"},
 		{method: http.MethodPost, path: "/provider/callbacks/outbound"},
 	}
@@ -144,6 +145,8 @@ func TestNewServerWiresRemainingHandlers(t *testing.T) {
 		{method: http.MethodPost, path: "/threads/thread-123/reply", body: "{}", want: http.StatusBadRequest},
 		{method: http.MethodPost, path: "/threads/thread-123/escalate", body: "{}", want: http.StatusNotFound},
 		{method: http.MethodGet, path: "/threads/thread-123/messages", want: http.StatusOK},
+		{method: http.MethodGet, path: "/suppressions", want: http.StatusOK},
+		{method: http.MethodGet, path: "/suppressions/suppression-123", want: http.StatusNotFound},
 		{method: http.MethodPost, path: "/contacts/contact-123/memory", body: "{}", want: http.StatusNotFound},
 		{method: http.MethodPost, path: "/provider/callbacks/outbound", body: "{}", want: http.StatusBadRequest},
 	}
@@ -1384,6 +1387,57 @@ func TestReplyEndpointBlocksSuppressedRecipientIntegration(t *testing.T) {
 	}
 	if len(messages) != 1 {
 		t.Fatalf("expected suppressed reply to avoid persisting an outbound message, got %#v", messages)
+	}
+}
+
+func TestSuppressionEndpointsReturnSavedSuppressionsIntegration(t *testing.T) {
+	runtimeStore = newRuntimeStore()
+	server := newServer()
+	now := time.Date(2026, 4, 10, 12, 0, 0, 0, time.UTC)
+
+	_, err := runtimeStore.SaveSuppression(context.Background(), domain.SuppressedAddress{
+		ID:             "suppression-123",
+		OrganizationID: "org-local",
+		EmailAddress:   "sender@example.com",
+		Reason:         "hard_bounce",
+		Source:         "ses",
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	})
+	if err != nil {
+		t.Fatalf("expected suppression save to succeed, got error: %v", err)
+	}
+
+	listRequest := httptest.NewRequest(http.MethodGet, "/suppressions?limit=1", nil)
+	listRecorder := httptest.NewRecorder()
+	server.ServeHTTP(listRecorder, listRequest)
+
+	if listRecorder.Code != http.StatusOK {
+		t.Fatalf("expected suppressions list endpoint to succeed, got %d", listRecorder.Code)
+	}
+
+	var listResponse []map[string]any
+	if err := json.Unmarshal(listRecorder.Body.Bytes(), &listResponse); err != nil {
+		t.Fatalf("expected suppression list json, got error: %v", err)
+	}
+	if len(listResponse) != 1 || listResponse[0]["id"] != "suppression-123" {
+		t.Fatalf("expected suppression list response, got %#v", listResponse)
+	}
+
+	showRequest := httptest.NewRequest(http.MethodGet, "/suppressions/suppression-123", nil)
+	showRecorder := httptest.NewRecorder()
+	server.ServeHTTP(showRecorder, showRequest)
+
+	if showRecorder.Code != http.StatusOK {
+		t.Fatalf("expected suppression show endpoint to succeed, got %d", showRecorder.Code)
+	}
+
+	var showResponse map[string]any
+	if err := json.Unmarshal(showRecorder.Body.Bytes(), &showResponse); err != nil {
+		t.Fatalf("expected suppression show json, got error: %v", err)
+	}
+	if showResponse["email_address"] != "sender@example.com" || showResponse["reason"] != "hard_bounce" {
+		t.Fatalf("expected suppression show response, got %#v", showResponse)
 	}
 }
 

@@ -74,3 +74,56 @@ func TestSuppressionStoreChecksSuppressedAddresses(t *testing.T) {
 		t.Fatal("expected suppression check to report true")
 	}
 }
+
+func TestSuppressionStoreGetsAndListsSuppressions(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("expected sqlmock db, got error: %v", err)
+	}
+	defer db.Close()
+
+	now := time.Date(2026, 4, 9, 22, 0, 0, 0, time.UTC)
+	rows := sqlmock.NewRows([]string{
+		"id", "organization_id", "email_address", "reason", "source", "created_at", "updated_at",
+	}).AddRow(
+		"suppression-123", "org-123", "sender@example.com", "hard_bounce", "ses", now, now,
+	)
+
+	mock.ExpectQuery(regexp.QuoteMeta(`
+		SELECT id, organization_id, email_address, reason, source, created_at, updated_at
+		FROM suppressed_addresses
+		WHERE id = $1
+	`)).
+		WithArgs("suppression-123").
+		WillReturnRows(rows)
+
+	mock.ExpectQuery(regexp.QuoteMeta(`
+		SELECT id, organization_id, email_address, reason, source, created_at, updated_at
+		FROM suppressed_addresses
+		ORDER BY updated_at DESC, id DESC
+		LIMIT $1
+	`)).
+		WithArgs(5).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "organization_id", "email_address", "reason", "source", "created_at", "updated_at",
+		}).AddRow(
+			"suppression-123", "org-123", "sender@example.com", "hard_bounce", "ses", now, now,
+		))
+
+	store := NewSuppressionStore(db)
+	record, err := store.GetByID(context.Background(), "suppression-123")
+	if err != nil {
+		t.Fatalf("expected suppression get to succeed, got error: %v", err)
+	}
+	if record.ID != "suppression-123" {
+		t.Fatalf("expected suppression record, got %#v", record)
+	}
+
+	list, err := store.List(context.Background(), 5)
+	if err != nil {
+		t.Fatalf("expected suppression list to succeed, got error: %v", err)
+	}
+	if len(list) != 1 || list[0].ID != "suppression-123" {
+		t.Fatalf("expected suppression list result, got %#v", list)
+	}
+}

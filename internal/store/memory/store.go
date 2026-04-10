@@ -421,6 +421,39 @@ func (s *Store) IsSuppressed(_ context.Context, organizationID, emailAddress str
 	return false, nil
 }
 
+func (s *Store) GetSuppressionByID(_ context.Context, suppressionID string) (domain.SuppressedAddress, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	record, ok := s.suppressionsByID[suppressionID]
+	if !ok {
+		return domain.SuppressedAddress{}, fmt.Errorf("%w: suppression", domain.ErrNotFound)
+	}
+	return record, nil
+}
+
+func (s *Store) ListSuppressions(_ context.Context, limit int) ([]domain.SuppressedAddress, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := make([]domain.SuppressedAddress, 0, len(s.suppressionsByID))
+	for _, record := range s.suppressionsByID {
+		out = append(out, record)
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].UpdatedAt.Equal(out[j].UpdatedAt) {
+			return out[i].UpdatedAt.After(out[j].UpdatedAt)
+		}
+		return out[i].ID > out[j].ID
+	})
+
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+
+	return out, nil
+}
+
 func (s *Store) SaveWebhookDelivery(_ context.Context, delivery domain.WebhookDelivery) (domain.WebhookDelivery, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
